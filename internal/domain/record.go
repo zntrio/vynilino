@@ -123,6 +123,7 @@ type DiscogsResult struct {
 // RecordRepository defines persistence operations for records.
 type RecordRepository interface {
 	Create(ctx context.Context, r *Record) (*Record, error)
+	CreateBatch(ctx context.Context, records []*Record) ([]*Record, error)
 	GetByID(ctx context.Context, id, userID string) (*Record, error)
 	Update(ctx context.Context, r *Record) (*Record, error)
 	Delete(ctx context.Context, id, userID string) error

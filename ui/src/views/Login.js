@@ -23,7 +23,8 @@ export function Login(container) {
       this.loading = true
       try {
         const data = await gql(LOGIN_MUTATION, { email: this.email, password: this.password })
-        Alpine.store('auth').setToken(data.login.accessToken)
+        // The server sets the HttpOnly vynilino_access cookie; no token
+        // storage in JS is needed (THREAT-006 mitigation).
         Alpine.store('auth').user = data.login.user
         router.navigate('/')
       } catch (e) {

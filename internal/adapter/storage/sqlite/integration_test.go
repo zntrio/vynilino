@@ -2,7 +2,9 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +20,7 @@ func newTestDB(t *testing.T) *testRepos {
 	}
 	f.Close()
 
-	db, err := sqlite.Open(f.Name())
+	db, err := sqlite.Open(t.Context(), f.Name())
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -434,5 +436,38 @@ func TestRecordRepo_FavoritesOnlyFilter(t *testing.T) {
 	}
 	if len(allPage.Records) != 3 {
 		t.Fatalf("expected 3 records total, got %d", len(allPage.Records))
+	}
+}
+
+func TestOpen_DirtyMigration(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "vynilino-dirty-*.db")
+	if err != nil {
+		t.Fatalf("create temp db: %v", err)
+	}
+	f.Close()
+
+	// Seed a dirty migration state directly, bypassing sqlite.Open.
+	raw, err := sql.Open("sqlite", f.Name())
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	_, err = raw.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version uint64, dirty bool)`)
+	if err != nil {
+		raw.Close()
+		t.Fatalf("create schema_migrations: %v", err)
+	}
+	_, err = raw.Exec(`INSERT INTO schema_migrations (version, dirty) VALUES (5, 1)`)
+	if err != nil {
+		raw.Close()
+		t.Fatalf("insert dirty state: %v", err)
+	}
+	raw.Close()
+
+	_, err = sqlite.Open(t.Context(), f.Name())
+	if err == nil {
+		t.Fatal("expected error for dirty migration state, got nil")
+	}
+	if !strings.Contains(err.Error(), "dirty") {
+		t.Errorf("error should mention dirty state, got: %v", err)
 	}
 }

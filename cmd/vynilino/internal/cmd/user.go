@@ -42,7 +42,7 @@ func UserCmd() *cobra.Command {
 }
 
 func openUserRepo(dbPath string) (domain.UserRepository, *sql.DB, error) {
-	db, err := sqlite.Open(dbPath)
+	db, err := sqlite.Open(context.Background(), dbPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open db %s: %w", dbPath, err)
 	}
@@ -151,8 +151,15 @@ func userDeactivateCmd(dbPath *string) *cobra.Command {
 			}
 			defer db.Close()
 
-			if err := repo.DeactivateUser(context.Background(), email); err != nil {
+			ctx := context.Background()
+			if err := repo.DeactivateUser(ctx, email); err != nil {
 				return err
+			}
+			// Revoke all outstanding refresh tokens so the deactivated account
+			// cannot continue to use its existing session.
+			if u, err := repo.GetByEmail(ctx, email); err == nil {
+				tokenRepo := sqlite.NewTokenRepository(db)
+				_ = tokenRepo.RevokeAllForUser(ctx, u.ID)
 			}
 			fmt.Printf("User %s deactivated\n", email)
 			return nil

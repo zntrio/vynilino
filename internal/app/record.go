@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"zntr.io/vynilino/internal/domain"
 )
@@ -49,7 +50,8 @@ func (s *RecordService) Create(ctx context.Context, userID string, r *domain.Rec
 		return nil, err
 	}
 
-	s.bus.Publish(userID, RecordChangedEvent{Type: "CREATED", Record: created, RecordID: created.ID})
+	slog.InfoContext(ctx, "audit", "op", "record.create", "user_id", userID, "record_id", created.ID)
+	s.bus.Publish(ctx, userID, RecordChangedEvent{Type: "CREATED", Record: created, RecordID: created.ID})
 	return &CreateResult{Record: created, DuplicateWarning: warning}, nil
 }
 
@@ -73,7 +75,8 @@ func (s *RecordService) Update(ctx context.Context, userID string, r *domain.Rec
 		return nil, err
 	}
 
-	s.bus.Publish(userID, RecordChangedEvent{Type: "UPDATED", Record: updated, RecordID: updated.ID})
+	slog.InfoContext(ctx, "audit", "op", "record.update", "user_id", userID, "record_id", updated.ID)
+	s.bus.Publish(ctx, userID, RecordChangedEvent{Type: "UPDATED", Record: updated, RecordID: updated.ID})
 	return updated, nil
 }
 
@@ -82,8 +85,27 @@ func (s *RecordService) Delete(ctx context.Context, id, userID string) error {
 	if err := s.records.Delete(ctx, id, userID); err != nil {
 		return err
 	}
-	s.bus.Publish(userID, RecordChangedEvent{Type: "DELETED", RecordID: id})
+	slog.InfoContext(ctx, "audit", "op", "record.delete", "user_id", userID, "record_id", id)
+	s.bus.Publish(ctx, userID, RecordChangedEvent{Type: "DELETED", RecordID: id})
 	return nil
+}
+
+// CreateBatch adds multiple records in a single database transaction.
+// Duplicate detection is skipped for bulk import performance.
+func (s *RecordService) CreateBatch(ctx context.Context, userID string, records []*domain.Record) ([]*CreateResult, error) {
+	for _, r := range records {
+		r.UserID = userID
+	}
+	created, err := s.records.CreateBatch(ctx, records)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]*CreateResult, len(created))
+	for i, rec := range created {
+		s.bus.Publish(ctx, userID, RecordChangedEvent{Type: "CREATED", Record: rec, RecordID: rec.ID})
+		results[i] = &CreateResult{Record: rec}
+	}
+	return results, nil
 }
 
 // List returns a paginated, filtered collection.

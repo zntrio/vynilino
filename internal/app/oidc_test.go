@@ -101,7 +101,7 @@ func testOIDCConfig() *config.Config {
 func TestOIDCService_DisabledWhenNoIssuer(t *testing.T) {
 	users := newMemUserRepo()
 	tokens := newMemTokenRepo()
-	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, false)
+	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, "", false, "")
 
 	cfg := &config.Config{TokenKey: testKeyHex, OIDCIssuer: ""}
 	svc, _, _ := newOIDCService(t, cfg, userSvc)
@@ -113,7 +113,7 @@ func TestOIDCService_DisabledWhenNoIssuer(t *testing.T) {
 func TestOIDCService_StateExpiry(t *testing.T) {
 	users := newMemUserRepo()
 	tokens := newMemTokenRepo()
-	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, false)
+	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, "", false, "")
 
 	cfg := testOIDCConfig()
 	svc, _, stateRepo := newOIDCService(t, cfg, userSvc)
@@ -139,7 +139,7 @@ func TestOIDCService_StateExpiry(t *testing.T) {
 func TestOIDCService_InvalidState(t *testing.T) {
 	users := newMemUserRepo()
 	tokens := newMemTokenRepo()
-	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, false)
+	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, "", false, "")
 
 	cfg := testOIDCConfig()
 	svc, _, _ := newOIDCService(t, cfg, userSvc)
@@ -159,7 +159,7 @@ func TestOIDCService_RegistrationClosedInSingleOwnerMode(t *testing.T) {
 	// Create one existing user so single-owner blocks provisioning.
 	_, _ = users.Create(context.Background(), &domain.User{Email: "existing@example.com", PasswordHash: "h", Role: domain.RoleAdmin})
 
-	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, true /* singleOwner */)
+	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, "", true /* singleOwner */, "")
 
 	cfg := testOIDCConfig()
 	svc, _, stateRepo := newOIDCService(t, cfg, userSvc)
@@ -192,7 +192,7 @@ func TestOIDCService_UnverifiedEmailSkipsLinking(t *testing.T) {
 	// Create a user with the email we'll try to link.
 	_, _ = users.Create(context.Background(), &domain.User{Email: "alice@example.com", PasswordHash: "h", Role: domain.RoleAdmin})
 
-	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, false)
+	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, "", false, "")
 
 	cfg := testOIDCConfig()
 	svc, identityRepo, _ := newOIDCService(t, cfg, userSvc)

@@ -6,13 +6,15 @@ The system SHALL serve two separate single-page application shells from static a
 - `GET /login` (and `/login.html`) SHALL serve `ui/dist/login.html` — the login-only bundle.
 - `GET /` and all non-API, non-asset, non-login sub-paths SHALL serve `ui/dist/index.html` — the authenticated app shell.
 
-#### Scenario: Root path returns index.html
-- **WHEN** an authenticated browser requests `GET /`
-- **THEN** the system SHALL return `200 OK` with `Content-Type: text/html` and the contents of `ui/dist/index.html`
+Before writing the response body for any HTML entry point, the system SHALL inject a per-request CSP nonce (as specified in the `csp-nonce` spec) as an attribute on every `<script>` and `<link rel="stylesheet">` element. The response SHALL also include `Cache-Control: no-store` to prevent caching of the nonce-bearing page.
 
-#### Scenario: Login path returns login.html
+#### Scenario: Root path returns index.html with nonce
+- **WHEN** an authenticated browser requests `GET /`
+- **THEN** the system SHALL return `200 OK` with `Content-Type: text/html`, the contents of `ui/dist/index.html` with nonce attributes injected on all script and stylesheet elements, and `Cache-Control: no-store`
+
+#### Scenario: Login path returns login.html with nonce
 - **WHEN** any browser requests `GET /login` or `GET /login.html`
-- **THEN** the system SHALL return `200 OK` with `Content-Type: text/html` and the contents of `ui/dist/login.html`
+- **THEN** the system SHALL return `200 OK` with `Content-Type: text/html`, the contents of `ui/dist/login.html` with nonce attributes injected on all script and stylesheet elements, and `Cache-Control: no-store`
 
 #### Scenario: Static assets served with cache headers
 - **WHEN** a browser requests a hashed asset such as `GET /assets/main.abc123.js`
@@ -20,7 +22,11 @@ The system SHALL serve two separate single-page application shells from static a
 
 #### Scenario: SPA fallback for deep links (authenticated app)
 - **WHEN** a browser requests any path under `/` that is not `/graphql`, `/api/`, `/auth/`, `/login`, `/login.html`, or a known static asset
-- **THEN** the system SHALL return `200 OK` with the contents of `ui/dist/index.html` to support client-side routing
+- **THEN** the system SHALL return `200 OK` with the contents of `ui/dist/index.html` with nonce attributes injected on all script and stylesheet elements, `Cache-Control: no-store`, and a `Content-Security-Policy` header scoped to the per-request nonce
+
+#### Scenario: HTML entry point response is not cached
+- **WHEN** the server returns any HTML entry-point response (`/`, `/login`, or an SPA fallback path)
+- **THEN** the response SHALL include the header `Cache-Control: no-store` and SHALL NOT include `Cache-Control: public` or any `max-age` directive
 
 ### Requirement: Current user identity endpoint
 The system SHALL expose `GET /api/me` returning the authenticated user's profile so the UI can determine login state without a GraphQL query.

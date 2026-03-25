@@ -3,10 +3,12 @@ package app_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"zntr.io/vynilino/internal/app"
+	"zntr.io/vynilino/internal/ctxutil"
 	"zntr.io/vynilino/internal/domain"
 )
 
@@ -116,7 +118,7 @@ func newTestUserService(t *testing.T) (*app.UserService, *memUserRepo, *memToken
 	t.Helper()
 	users := newMemUserRepo()
 	tokens := newMemTokenRepo()
-	svc, err := app.NewUserService(users, tokens, testKeyHex, true)
+	svc, err := app.NewUserService(users, tokens, testKeyHex, "", true, "")
 	if err != nil {
 		t.Fatalf("NewUserService: %v", err)
 	}
@@ -218,5 +220,93 @@ func TestValidateAccessToken(t *testing.T) {
 	}
 	if userID == "" {
 		t.Fatal("expected non-empty userID")
+	}
+}
+
+// ─── THREAT-001: bootstrap token tests ───────────────────────────────────────
+
+func TestRegister_BootstrapTokenRequired(t *testing.T) {
+	users := newMemUserRepo()
+	tokens := newMemTokenRepo()
+	svc, err := app.NewUserService(users, tokens, testKeyHex, "", false, "secret123")
+	if err != nil {
+		t.Fatalf("NewUserService: %v", err)
+	}
+	_, err = svc.Register(context.Background(), "alice@example.com", "S3cretPass1!")
+	if !errors.Is(err, domain.ErrBootstrapTokenRequired) {
+		t.Fatalf("expected ErrBootstrapTokenRequired, got %v", err)
+	}
+}
+
+func TestRegister_BootstrapTokenAccepted(t *testing.T) {
+	users := newMemUserRepo()
+	tokens := newMemTokenRepo()
+	svc, err := app.NewUserService(users, tokens, testKeyHex, "", false, "secret123")
+	if err != nil {
+		t.Fatalf("NewUserService: %v", err)
+	}
+	ctx := ctxutil.WithBootstrapToken(context.Background(), "secret123")
+	_, err = svc.Register(ctx, "alice@example.com", "S3cretPass1!")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// First user must be admin.
+	u, _ := users.GetByEmail(context.Background(), "alice@example.com")
+	if u.Role != domain.RoleAdmin {
+		t.Fatalf("expected RoleAdmin, got %s", u.Role)
+	}
+}
+
+func TestRegister_BootstrapTokenSkippedWhenUsersExist(t *testing.T) {
+	users := newMemUserRepo()
+	tokens := newMemTokenRepo()
+	// Pre-seed an existing admin.
+	_, _ = users.Create(context.Background(), &domain.User{Email: "owner@example.com", PasswordHash: "h", Role: domain.RoleAdmin})
+
+	svc, err := app.NewUserService(users, tokens, testKeyHex, "", false, "secret123")
+	if err != nil {
+		t.Fatalf("NewUserService: %v", err)
+	}
+	// Register without token — should NOT require bootstrap token because table is non-empty.
+	_, err = svc.Register(context.Background(), "bob@example.com", "S3cretPass1!")
+	if errors.Is(err, domain.ErrBootstrapTokenRequired) {
+		t.Fatal("bootstrap token check should not fire when users already exist")
+	}
+}
+
+// ─── THREAT-002: race condition tests ────────────────────────────────────────
+
+func TestRegister_RaceBootstrap(t *testing.T) {
+	users := newMemUserRepo()
+	tokens := newMemTokenRepo()
+	svc, err := app.NewUserService(users, tokens, testKeyHex, "", false, "")
+	if err != nil {
+		t.Fatalf("NewUserService: %v", err)
+	}
+
+	const n = 10
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := range n {
+		go func(i int) {
+			defer wg.Done()
+			email := context.Background()
+			_ = email
+			_, errs[i] = svc.Register(context.Background(),
+				"user"+string(rune('a'+i))+"@example.com", "S3cretPass1!")
+		}(i)
+	}
+	wg.Wait()
+
+	// Count how many registrations succeeded and how many got admin role.
+	admins := 0
+	for _, u := range users.users {
+		if u.Role == domain.RoleAdmin {
+			admins++
+		}
+	}
+	if admins != 1 {
+		t.Fatalf("expected exactly 1 admin, got %d", admins)
 	}
 }

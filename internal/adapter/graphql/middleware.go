@@ -25,6 +25,9 @@ func AuthMiddleware(validator tokenValidator) func(http.Handler) http.Handler {
 					r = r.WithContext(ctxutil.WithUserID(r.Context(), userID))
 				}
 			}
+			if bt := r.Header.Get("X-Bootstrap-Token"); bt != "" {
+				r = r.WithContext(ctxutil.WithBootstrapToken(r.Context(), bt))
+			}
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -36,9 +39,13 @@ func UserIDFromContext(r *http.Request) (string, bool) {
 }
 
 func extractBearerToken(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		return ""
+	// Authorization header takes precedence (API clients, curl, etc.).
+	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
 	}
-	return strings.TrimPrefix(auth, "Bearer ")
+	// Fall back to the HttpOnly cookie set by the browser (THREAT-006 mitigation).
+	if c, err := r.Cookie("vynilino_access"); err == nil {
+		return c.Value
+	}
+	return ""
 }

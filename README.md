@@ -68,6 +68,61 @@ docker compose up -d
 
 The service is now available at `http://localhost:8080`.
 
+## Reverse Proxy / TLS Termination (Caddy)
+
+Vynilino binds to plain HTTP on `:8080`. For production, put [Caddy](https://caddyserver.com/) in front to handle TLS termination and automatic certificate management via Let's Encrypt.
+
+### Public domain (automatic HTTPS)
+
+```caddyfile
+vinyl.example.com {
+    reverse_proxy localhost:8080 {
+        header_up X-Real-IP        {remote_host}
+        header_up X-Forwarded-For  {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    encode gzip
+}
+```
+
+Caddy proxies WebSocket upgrades (GraphQL subscriptions) automatically — no extra configuration needed.
+
+Update these environment variables to match your public domain:
+
+```bash
+VYNILINO_OIDC_REDIRECT_URL=https://vinyl.example.com/oidc/callback
+VYNILINO_ALLOWED_ORIGINS=https://vinyl.example.com
+```
+
+### Local / self-signed TLS
+
+Use Caddy's built-in CA for a locally-trusted certificate (useful for LAN deployments or development over HTTPS):
+
+```caddyfile
+vinyl.local {
+    tls internal
+    reverse_proxy localhost:8080
+}
+```
+
+### Custom certificate
+
+```caddyfile
+vinyl.example.com {
+    tls /path/to/cert.pem /path/to/key.pem
+    reverse_proxy localhost:8080
+}
+```
+
 ## Environment Variables
 
 | Variable                      | Default                            | Description                                      |

@@ -9,13 +9,18 @@ import (
 	"testing/fstest"
 
 	"zntr.io/vynilino/internal/adapter/ui"
+	"zntr.io/vynilino/internal/ctxutil"
 )
 
 // stubFS builds a minimal in-memory FS with index.html, login.html, and a hashed asset.
 func stubFS() fs.FS {
 	return fstest.MapFS{
-		"index.html":            &fstest.MapFile{Data: []byte("<html>app</html>")},
-		"login.html":            &fstest.MapFile{Data: []byte("<html>login</html>")},
+		"index.html": &fstest.MapFile{Data: []byte(
+			`<html><head><script type="module" src="/assets/main.js"></script></head><body>app</body></html>`,
+		)},
+		"login.html": &fstest.MapFile{Data: []byte(
+			`<html><head><script type="module" src="/assets/login.js"></script></head><body>login</body></html>`,
+		)},
 		"assets/main-abc123.js": &fstest.MapFile{Data: []byte("console.log('hi')")},
 	}
 }
@@ -83,7 +88,10 @@ func TestSPAHandler_PostMethodNotHandled(t *testing.T) {
 	}
 }
 
-func TestSPAHandler_LoginPathServesLoginHTML(t *testing.T) {
+// /login is now handled by an explicit chi route (loginRedirectHandler) registered
+// before the SPA mount. SPAHandler never sees GET /login in production; when called
+// directly it falls through to the index.html SPA fallback.
+func TestSPAHandler_LoginPathFallsBackToIndexHTML(t *testing.T) {
 	h := newTestHandler(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
@@ -92,21 +100,33 @@ func TestSPAHandler_LoginPathServesLoginHTML(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
-		t.Fatalf("expected text/html, got %q", ct)
-	}
-	if !strings.Contains(rec.Body.String(), "login") {
-		t.Fatalf("expected login.html body, got: %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "app") {
+		t.Fatalf("expected index.html (SPA fallback), got: %s", rec.Body.String())
 	}
 }
 
-func TestSPAHandler_LoginPathNotFallbackToIndexHTML(t *testing.T) {
-	h := newTestHandler(t)
+func TestSPAHandler_NonceInjectedIntoIndexHTML(t *testing.T) {
+	h := ui.New(stubFS(), nil, nil).SPAHandler()
+
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req = req.WithContext(ctxutil.WithCSPNonce(req.Context(), "testnonce123"))
 	h.ServeHTTP(rec, req)
 
-	if strings.Contains(rec.Body.String(), "app") && !strings.Contains(rec.Body.String(), "login") {
-		t.Fatal("/login should serve login.html, not index.html")
+	body := rec.Body.String()
+	if !strings.Contains(body, `nonce="testnonce123"`) {
+		t.Errorf("expected nonce attribute in HTML, got: %s", body)
+	}
+}
+
+func TestSPAHandler_NoStoreCacheOnIndexHTML(t *testing.T) {
+	h := newTestHandler(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	h.ServeHTTP(rec, req)
+
+	cc := rec.Header().Get("Cache-Control")
+	if cc != "no-store" {
+		t.Fatalf("expected Cache-Control: no-store on index.html, got %q", cc)
 	}
 }

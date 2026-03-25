@@ -154,6 +154,14 @@ func (s *OIDCService) HandleCallback(ctx context.Context, code, stateVal string)
 		return nil, err
 	}
 
+	user, err := s.userSvc.users.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !user.Active {
+		return nil, domain.ErrAccountDisabled
+	}
+
 	return s.userSvc.issueTokenPair(ctx, userID)
 }
 
@@ -183,34 +191,15 @@ func (s *OIDCService) resolveUser(ctx context.Context, provider, subject, email 
 		}
 	}
 
-	// 3. Auto-provision a new account.
-	if s.userSvc.singleOwner {
-		count, err := s.userSvc.users.Count(ctx)
-		if err != nil {
-			return "", err
-		}
-		if count > 0 {
-			return "", domain.ErrRegistrationClosed
-		}
-	}
-
-	count, _ := s.userSvc.users.Count(ctx)
-	role := domain.RoleUser
-	if count == 0 {
-		role = domain.RoleAdmin
-	}
-
-	// Only assign email to the provisioned account if it's verified; unverified
-	// emails are not trustworthy and may collide with an existing local account.
+	// 3. Auto-provision a new account via the shared atomic bootstrap path.
+	// Only assign email if it's verified; unverified emails are not trustworthy
+	// and may collide with an existing local account.
 	provisionEmail := ""
 	if emailVerified {
 		provisionEmail = email
 	}
 
-	newUser, err := s.userSvc.users.Create(ctx, &domain.User{
-		Email: provisionEmail,
-		Role:  role,
-	})
+	newUser, err := s.userSvc.BootstrapProvisionUser(ctx, provisionEmail)
 	if err != nil {
 		return "", err
 	}

@@ -2,8 +2,9 @@
 package ui
 
 import (
+	"bytes"
 	"encoding/json"
-	"io"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -15,19 +16,50 @@ import (
 
 // Handler serves the embedded SPA and the /api/me + /api/upload endpoints.
 type Handler struct {
-	static   fs.FS
-	userRepo domain.UserRepository
-	fs       *filestore.FileStore
+	static    fs.FS
+	userRepo  domain.UserRepository
+	fs        *filestore.FileStore
+	indexHTML []byte
+	loginHTML []byte
 }
 
 // New creates a Handler. staticFiles should be the embedded ui/dist FS
 // (or a sub-FS of it).
-func New(staticFiles fs.FS, userRepo domain.UserRepository, fs *filestore.FileStore) *Handler {
+func New(staticFiles fs.FS, userRepo domain.UserRepository, filestore *filestore.FileStore) *Handler {
 	return &Handler{
-		static:   staticFiles,
-		userRepo: userRepo,
-		fs:       fs,
+		static:    staticFiles,
+		userRepo:  userRepo,
+		fs:        filestore,
+		indexHTML: mustReadFile(staticFiles, "index.html"),
+		loginHTML: mustReadFile(staticFiles, "login.html"),
 	}
+}
+
+// mustReadFile reads the named file from the FS and panics if it is missing.
+func mustReadFile(fsys fs.FS, name string) []byte {
+	data, err := fs.ReadFile(fsys, name)
+	if err != nil {
+		panic(fmt.Sprintf("ui: cannot read embedded %s: %v", name, err))
+	}
+	return data
+}
+
+// injectNonce adds nonce="<value>" to every <script tag in the HTML bytes.
+// It operates on raw bytes and is safe for any UTF-8 HTML content.
+func injectNonce(html []byte, nonce string) []byte {
+	if nonce == "" {
+		return html
+	}
+	return bytes.ReplaceAll(html, []byte("<script "), []byte(`<script nonce="`+nonce+`" `))
+}
+
+// serveHTML writes the given HTML content with the per-request nonce injected
+// into every <script> tag. The response is marked no-store to prevent caching.
+func serveHTML(w http.ResponseWriter, r *http.Request, html []byte) {
+	nonce := ctxutil.CSPNonceFromContext(r.Context())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(injectNonce(html, nonce))
 }
 
 // MeHandler handles GET /api/me.
@@ -102,6 +134,14 @@ func (h *Handler) UploadHandler() http.HandlerFunc {
 	}
 }
 
+// LoginHandler returns an http.HandlerFunc that serves login.html with a
+// per-request CSP nonce injected into every <script> tag.
+func (h *Handler) LoginHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		serveHTML(w, r, h.loginHTML)
+	}
+}
+
 // SPAHandler returns an http.Handler that serves static files from the embedded
 // FS and falls back to index.html for unknown paths (client-side routing).
 //
@@ -120,19 +160,6 @@ func (h *Handler) SPAHandler() http.Handler {
 
 		path := r.URL.Path
 
-		// Serve the standalone login bundle for /login (without extension).
-		if path == "/login" {
-			loginHTML, err := h.static.Open("login.html")
-			if err != nil {
-				http.Error(w, "not found", http.StatusNotFound)
-				return
-			}
-			defer loginHTML.Close()
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = io.Copy(w, loginHTML)
-			return
-		}
-
 		// Check if the path exists as a real file in the embedded FS.
 		if _, err := fs.Stat(h.static, strings.TrimPrefix(path, "/")); err == nil {
 			// Set immutable cache headers for hashed asset files.
@@ -144,14 +171,6 @@ func (h *Handler) SPAHandler() http.Handler {
 		}
 
 		// Fall back to index.html for all other SPA routes.
-		index, err := h.static.Open("index.html")
-		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-		defer index.Close()
-
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.Copy(w, index)
+		serveHTML(w, r, h.indexHTML)
 	})
 }

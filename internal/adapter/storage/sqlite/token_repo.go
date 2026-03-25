@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +27,7 @@ func (r *tokenRepository) Create(ctx context.Context, t *domain.RefreshToken) (*
 	t.ID = uuid.NewString()
 	t.CreatedAt = now
 
+	start := time.Now()
 	row, err := r.q.CreateRefreshToken(ctx, sqlcdb.CreateRefreshTokenParams{
 		ID:        t.ID,
 		UserID:    t.UserID,
@@ -33,6 +35,7 @@ func (r *tokenRepository) Create(ctx context.Context, t *domain.RefreshToken) (*
 		ExpiresAt: t.ExpiresAt.Unix(),
 		CreatedAt: now.Unix(),
 	})
+	logTokenWriteDuration(ctx, "token.Create", time.Since(start))
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +54,10 @@ func (r *tokenRepository) GetByHash(ctx context.Context, hash string) (*domain.R
 }
 
 func (r *tokenRepository) Revoke(ctx context.Context, id string) error {
-	return r.q.RevokeRefreshToken(ctx, id)
+	start := time.Now()
+	err := r.q.RevokeRefreshToken(ctx, id)
+	logTokenWriteDuration(ctx, "token.Revoke", time.Since(start))
+	return err
 }
 
 func (r *tokenRepository) RevokeAllForUser(ctx context.Context, userID string) error {
@@ -70,5 +76,17 @@ func tokenFromRow(row sqlcdb.RefreshToken) *domain.RefreshToken {
 		ExpiresAt: time.Unix(row.ExpiresAt, 0),
 		Revoked:   row.Revoked != 0,
 		CreatedAt: time.Unix(row.CreatedAt, 0),
+	}
+}
+
+// logTokenWriteDuration emits a WARN log when a token write exceeds 1 second.
+func logTokenWriteDuration(ctx context.Context, op string, d time.Duration) {
+	ms := d.Milliseconds()
+	if ms > 1000 {
+		slog.WarnContext(ctx, "db write slow",
+			"op", op,
+			"db_write_duration_ms", ms,
+			"busy_timeout_approached", ms > 3000,
+		)
 	}
 }

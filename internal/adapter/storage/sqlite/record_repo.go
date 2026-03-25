@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ func (r *recordRepository) Create(ctx context.Context, rec *domain.Record) (*dom
 	rec.CreatedAt = now
 	rec.UpdatedAt = now
 
+	start := time.Now()
 	row, err := r.q.CreateRecord(ctx, sqlcdb.CreateRecordParams{
 		ID:           rec.ID,
 		UserID:       rec.UserID,
@@ -48,10 +50,73 @@ func (r *recordRepository) Create(ctx context.Context, rec *domain.Record) (*dom
 		CreatedAt:    now.Unix(),
 		UpdatedAt:    now.Unix(),
 	})
+	logWriteDuration(ctx, "record.Create", time.Since(start))
 	if err != nil {
 		return nil, err
 	}
 	return recordFromRow(row), nil
+}
+
+// CreateBatch inserts a slice of records within a single SQLite transaction,
+// reducing write-lock hold time compared to one transaction per row.
+func (r *recordRepository) CreateBatch(ctx context.Context, records []*domain.Record) ([]*domain.Record, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	qtx := sqlcdb.New(tx)
+	now := time.Now()
+	start := now
+
+	result := make([]*domain.Record, 0, len(records))
+	for _, rec := range records {
+		rec.ID = uuid.NewString()
+		rec.CreatedAt = now
+		rec.UpdatedAt = now
+
+		row, err := qtx.CreateRecord(ctx, sqlcdb.CreateRecordParams{
+			ID:           rec.ID,
+			UserID:       rec.UserID,
+			Title:        rec.Title,
+			Artist:       rec.Artist,
+			Year:         toNullInt64(rec.Year),
+			Label:        toNullString(rec.Label),
+			Format:       toNullStringV((*string)(rec.Format)),
+			Condition:    toNullStringV((*string)(rec.Condition)),
+			Genre:        sql.NullString{String: jsonStrings(rec.Genres), Valid: true},
+			Notes:        toNullString(rec.Notes),
+			CoverArtUrl:  toNullString(rec.CoverArtURL),
+			DiscogsID:    toNullString(rec.DiscogsID),
+			Favorite:     boolPtrToInt(rec.Favorite),
+			PersonalNote: toNullString(rec.PersonalNote),
+			CreatedAt:    now.Unix(),
+			UpdatedAt:    now.Unix(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, recordFromRow(row))
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	logWriteDuration(ctx, "record.CreateBatch", time.Since(start))
+	return result, nil
+}
+
+// logWriteDuration emits a WARN log when a write operation exceeds 1 second.
+func logWriteDuration(ctx context.Context, op string, d time.Duration) {
+	ms := d.Milliseconds()
+	if ms > 1000 {
+		slog.WarnContext(ctx, "db write slow",
+			"op", op,
+			"db_write_duration_ms", ms,
+			"busy_timeout_approached", ms > 3000,
+		)
+	}
 }
 
 func (r *recordRepository) GetByID(ctx context.Context, id, userID string) (*domain.Record, error) {

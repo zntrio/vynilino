@@ -9,10 +9,33 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"zntr.io/vynilino/internal/ctxutil"
 	"zntr.io/vynilino/internal/domain"
 )
+
+// accessCookieName is the HttpOnly cookie that carries the PASETO access token.
+const accessCookieName = "vynilino_access"
+
+// setAccessCookie writes (or clears) the HttpOnly access-token cookie on the
+// current HTTP response (THREAT-006 mitigation).
+// Pass ttl > 0 to set the cookie, ttl < 0 to clear it.
+func setAccessCookie(ctx context.Context, token string, ttl int) {
+	w, ok := ctxutil.ResponseWriterFromContext(ctx)
+	if !ok {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     accessCookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   ttl,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
 
 // Register is the resolver for the register field.
 func (r *mutationResolver) Register(ctx context.Context, email string, password string) (*AuthPayload, error) {
@@ -20,6 +43,7 @@ func (r *mutationResolver) Register(ctx context.Context, email string, password 
 	if err != nil {
 		return nil, gqlErr(err)
 	}
+	setAccessCookie(ctx, pair.AccessToken, pair.ExpiresIn)
 	user, err := r.UserRepo.GetByEmail(ctx, email)
 	if err != nil {
 		return nil, err
@@ -33,6 +57,7 @@ func (r *mutationResolver) Login(ctx context.Context, email string, password str
 	if err != nil {
 		return nil, gqlErr(err)
 	}
+	setAccessCookie(ctx, pair.AccessToken, pair.ExpiresIn)
 	user, err := r.UserRepo.GetByEmail(ctx, email)
 	if err != nil {
 		return nil, err
@@ -46,6 +71,7 @@ func (r *mutationResolver) RefreshToken(ctx context.Context, token string) (*Aut
 	if err != nil {
 		return nil, gqlErr(err)
 	}
+	setAccessCookie(ctx, pair.AccessToken, pair.ExpiresIn)
 	userID, err := r.UserSvc.ValidateAccessToken(pair.AccessToken)
 	if err != nil {
 		return nil, err
@@ -63,6 +89,8 @@ func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
 	if !ok {
 		return false, errUnauthenticated
 	}
+	// Clear the access-token cookie (THREAT-006 mitigation).
+	setAccessCookie(ctx, "", -1)
 	return true, r.UserSvc.Logout(ctx, userID)
 }
 
@@ -87,6 +115,7 @@ func (r *mutationResolver) OidcCallback(ctx context.Context, code string, state 
 	if err != nil {
 		return nil, gqlErr(err)
 	}
+	setAccessCookie(ctx, pair.AccessToken, pair.ExpiresIn)
 	userID, err := r.UserSvc.ValidateAccessToken(pair.AccessToken)
 	if err != nil {
 		return nil, err

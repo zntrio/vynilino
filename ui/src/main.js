@@ -14,16 +14,17 @@ window._router = router
 // ── Alpine global store ───────────────────────────────────────────────────────
 Alpine.store('auth', {
   user: null,
-  token: localStorage.getItem('vynilino_token'),
+  // Token is no longer stored in localStorage. The server sets an HttpOnly
+  // cookie (vynilino_access) that the browser sends automatically with every
+  // request. This field is kept for backward compatibility with templates that
+  // check auth.token, but it holds a transient in-memory copy only.
+  token: null,
   ready: false,
 
   setToken(token) {
     this.token = token
-    if (token) {
-      localStorage.setItem('vynilino_token', token)
-    } else {
-      localStorage.removeItem('vynilino_token')
-    }
+    // Do not persist to localStorage — the HttpOnly cookie is the authoritative
+    // credential store (THREAT-006 mitigation).
   },
 
   logout() {
@@ -53,18 +54,12 @@ router
 
 // ── Boot sequence ─────────────────────────────────────────────────────────────
 async function boot() {
-  const token = Alpine.store('auth').token
-
-  if (!token) {
-    window.location.href = '/login'
-    return
-  }
-
+  // With HttpOnly cookie auth we cannot read the token from JS. Just probe the
+  // server — if the cookie is valid the me query succeeds; otherwise redirect.
   try {
     const data = await gql(`query { me { id email } }`)
     Alpine.store('auth').user = data.me
   } catch {
-    Alpine.store('auth').setToken(null)
     window.location.href = '/login'
     return
   }

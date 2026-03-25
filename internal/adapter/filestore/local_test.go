@@ -2,6 +2,7 @@ package filestore_test
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -10,7 +11,7 @@ import (
 
 func newTestStore(t *testing.T) *filestore.FileStore {
 	t.Helper()
-	fs, err := filestore.New(t.TempDir())
+	fs, err := filestore.New(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatalf("new file store: %v", err)
 	}
@@ -79,5 +80,42 @@ func TestOpenCoverArt_PathTraversal(t *testing.T) {
 	_, _, err := fs.OpenCoverArt("user-1", "../../../etc/passwd")
 	if err == nil {
 		t.Fatal("expected error for path traversal attempt")
+	}
+}
+
+func TestStoreCoverArt_InsufficientSpace(t *testing.T) {
+	fs := newTestStore(t)
+
+	// Simulate a full disk: 0 available blocks, block size 4096, 1000 total blocks.
+	orig := *filestore.StatfsFunc
+	*filestore.StatfsFunc = filestore.FakeStatfs(0, 4096, 1000)
+	t.Cleanup(func() { *filestore.StatfsFunc = orig })
+
+	_, err := fs.StoreCoverArt("user-1", "record-5", bytes.NewReader(minimalJPEG))
+	if err == nil {
+		t.Fatal("expected error for insufficient disk space")
+	}
+	if !errors.Is(err, filestore.ErrInsufficientSpace) {
+		t.Fatalf("expected ErrInsufficientSpace, got %v", err)
+	}
+}
+
+func TestStoreCoverArt_PathTraversal(t *testing.T) {
+	cases := []string{
+		"../../etc/passwd",
+		"../sibling",
+		"%2e%2e/escape",
+	}
+	for _, recordID := range cases {
+		t.Run(recordID, func(t *testing.T) {
+			fs := newTestStore(t)
+			_, err := fs.StoreCoverArt("user-1", recordID, bytes.NewReader(minimalJPEG))
+			if err == nil {
+				t.Fatal("expected error for path traversal attempt")
+			}
+			if err != filestore.ErrInvalidPath {
+				t.Fatalf("expected ErrInvalidPath, got %v", err)
+			}
+		})
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -74,12 +75,16 @@ func ServeCmd() *cobra.Command {
 	return cmd
 }
 
-func newDB(cfg *config.Config) (*sql.DB, error) {
-	return sqlite.Open(cfg.DBPath)
+func newDB(lc fx.Lifecycle, cfg *config.Config) (*sql.DB, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	lc.Append(fx.Hook{OnStop: func(_ context.Context) error { cancel(); return nil }})
+	return sqlite.Open(ctx, cfg.DBPath)
 }
 
-func newFileStore(cfg *config.Config) (*filestore.FileStore, error) {
-	return filestore.New(cfg.MediaDir)
+func newFileStore(lc fx.Lifecycle, cfg *config.Config) (*filestore.FileStore, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	lc.Append(fx.Hook{OnStop: func(_ context.Context) error { cancel(); return nil }})
+	return filestore.New(ctx, cfg.MediaDir)
 }
 
 func newStaticFS() fs.FS {
@@ -95,25 +100,35 @@ func newUserService(
 	tokens domain.TokenRepository,
 	cfg *config.Config,
 ) (*app.UserService, error) {
-	return app.NewUserService(users, tokens, cfg.TokenKey, cfg.SingleOwner)
+	return app.NewUserService(users, tokens, cfg.TokenKey, cfg.TokenKeyNew, cfg.SingleOwner, cfg.BootstrapToken)
 }
 
-func newHTTPServer(handler http.Handler, cfg *config.Config) *http.Server {
-	return &http.Server{
+func newHTTPServer(handler http.Handler, cfg *config.Config) (*http.Server, context.CancelFunc) {
+	baseCtx, cancel := context.WithCancel(context.Background())
+	srv := &http.Server{
 		Addr:         cfg.ListenAddr,
 		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
+		BaseContext:  func(_ net.Listener) context.Context { return baseCtx },
 	}
+	return srv, cancel
 }
 
-func startServer(lc fx.Lifecycle, srv *http.Server) {
+func startServer(lc fx.Lifecycle, srv *http.Server, cfg *config.Config, cancelBase context.CancelFunc) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			slog.Info("server listening", "addr", srv.Addr)
 			go func() {
-				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				var err error
+				if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+					slog.Info("TLS enabled", "cert", cfg.TLSCertFile)
+					err = srv.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+				} else {
+					err = srv.ListenAndServe()
+				}
+				if err != nil && err != http.ErrServerClosed {
 					slog.Error("server error", "err", err)
 				}
 			}()
@@ -121,6 +136,7 @@ func startServer(lc fx.Lifecycle, srv *http.Server) {
 		},
 		OnStop: func(ctx context.Context) error {
 			slog.Info("shutting down server")
+			cancelBase() // cancel all in-flight request contexts before draining
 			shutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			return srv.Shutdown(shutCtx)

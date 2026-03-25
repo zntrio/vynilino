@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"zntr.io/vynilino/internal/app"
@@ -16,7 +18,15 @@ import (
 	"zntr.io/vynilino/internal/domain"
 )
 
-const maxImportBytes = 10 << 20 // 10 MB
+const (
+	maxImportBytes  = 10 << 20 // 10 MB
+	importBatchSize = 50
+	importBackoffMs = 10 * time.Millisecond
+)
+
+// importInProgress tracks per-user in-progress CSV imports.
+// THREAT-011: keyed by userID so each user has an independent import slot.
+var importInProgress sync.Map
 
 // exportJSONHandler streams the user's collection as a JSON attachment.
 func exportJSONHandler(svc *app.RecordService) http.HandlerFunc {
@@ -31,6 +41,9 @@ func exportJSONHandler(svc *app.RecordService) http.HandlerFunc {
 			http.Error(w, "export failed", http.StatusInternalServerError)
 			return
 		}
+
+		// THREAT-013: audit log for bulk export.
+		slog.InfoContext(r.Context(), "audit", "op", "export.json", "user_id", userID, "count", len(page.Records))
 
 		date := time.Now().Format("2006-01-02")
 		w.Header().Set("Content-Type", "application/json")
@@ -66,6 +79,9 @@ func exportCSVHandler(svc *app.RecordService) http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="vynilino-export-%s.csv"`, date))
 
+		// THREAT-013: audit log for bulk export.
+		slog.InfoContext(r.Context(), "audit", "op", "export.csv", "user_id", userID, "count", len(page.Records))
+
 		cw := csv.NewWriter(w)
 		_ = cw.Write(csvHeaders)
 		for _, rec := range page.Records {
@@ -76,9 +92,20 @@ func exportCSVHandler(svc *app.RecordService) http.HandlerFunc {
 }
 
 // importCSVHandler accepts a CSV upload and creates records.
-func importCSVHandler(svc *app.RecordService) http.HandlerFunc {
+// THREAT-011: per-user import lock; concurrent imports for different users proceed independently.
+func importCSVHandler(svc *app.RecordService, bus *app.EventBus) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, _ := ctxutil.UserIDFromContext(r.Context())
+
+		// Acquire per-user slot.
+		if _, loaded := importInProgress.LoadOrStore(userID, struct{}{}); loaded {
+			http.Error(w, "import already in progress", http.StatusTooManyRequests)
+			return
+		}
+		defer importInProgress.Delete(userID)
+
+		// THREAT-013: audit log for import start.
+		slog.InfoContext(r.Context(), "audit", "op", "import.csv.start", "user_id", userID)
 
 		r.Body = http.MaxBytesReader(w, r.Body, maxImportBytes)
 		if err := r.ParseMultipartForm(maxImportBytes); err != nil {
@@ -102,30 +129,63 @@ func importCSVHandler(svc *app.RecordService) http.HandlerFunc {
 			return
 		}
 
-		imported, skipped, errs := processCSVImport(r.Context(), svc, userID, file)
+		imported, skipped, errs, cancelled := processCSVImport(r.Context(), svc, bus, userID, file)
+
+		// THREAT-013: audit log for import completion.
+		slog.InfoContext(r.Context(), "audit", "op", "import.csv.done",
+			"user_id", userID, "imported", imported, "skipped", skipped,
+			"error_count", len(errs), "cancelled", cancelled)
 
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		_ = enc.Encode(map[string]any{
-			"imported": imported,
-			"skipped":  skipped,
-			"errors":   errs,
+			"imported":  imported,
+			"skipped":   skipped,
+			"errors":    errs,
+			"cancelled": cancelled,
 		})
 	}
 }
 
-func processCSVImport(ctx context.Context, svc *app.RecordService, userID string, r io.Reader) (imported, skipped int, errs []string) {
+func processCSVImport(ctx context.Context, svc *app.RecordService, bus *app.EventBus, userID string, r io.Reader) (imported, skipped int, errs []string, cancelled bool) {
 	cr := csv.NewReader(r)
 	cr.TrimLeadingSpace = true
 
 	headers, err := cr.Read()
 	if err != nil {
-		return 0, 0, []string{"failed to read CSV headers: " + err.Error()}
+		return 0, 0, []string{"failed to read CSV headers: " + err.Error()}, false
 	}
 	isDiscogs := isDiscogsCSV(headers)
 	colIdx := buildColIndex(headers, isDiscogs)
 
+	var batch []*domain.Record
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		results, err := svc.CreateBatch(ctx, userID, batch)
+		if err != nil {
+			skipped += len(batch)
+			errs = append(errs, fmt.Sprintf("batch create failed: %v", err))
+		} else {
+			imported += len(results)
+			if bus.HasSubscribers(userID) {
+				time.Sleep(importBackoffMs)
+			}
+		}
+		batch = batch[:0]
+	}
+
 	for row := 1; ; row++ {
+		select {
+		case <-ctx.Done():
+			flush()
+			cancelled = true
+			return
+		default:
+		}
+
 		record, err := cr.Read()
 		if err == io.EOF {
 			break
@@ -143,13 +203,12 @@ func processCSVImport(ctx context.Context, svc *app.RecordService, userID string
 			continue
 		}
 
-		if _, err := svc.Create(ctx, userID, rec); err != nil {
-			skipped++
-			errs = append(errs, fmt.Sprintf("row %d: create failed: %v", row, err))
-			continue
+		batch = append(batch, rec)
+		if len(batch) >= importBatchSize {
+			flush()
 		}
-		imported++
 	}
+	flush()
 	return
 }
 
@@ -229,6 +288,20 @@ func rowToRecord(row []string, colIdx map[string]int) (*domain.Record, error) {
 	return rec, nil
 }
 
+// sanitizeCSVField prevents CSV formula injection (THREAT-012).
+// Leading characters that trigger formula execution in spreadsheet software
+// are neutralised by prepending a tab character.
+func sanitizeCSVField(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "\t" + s
+	}
+	return s
+}
+
 func recordToCSVRow(rec *domain.Record) []string {
 	year := ""
 	if rec.Year != nil {
@@ -236,7 +309,7 @@ func recordToCSVRow(rec *domain.Record) []string {
 	}
 	label := ""
 	if rec.Label != nil {
-		label = *rec.Label
+		label = sanitizeCSVField(*rec.Label)
 	}
 	format := ""
 	if rec.Format != nil {
@@ -246,19 +319,18 @@ func recordToCSVRow(rec *domain.Record) []string {
 	if rec.Condition != nil {
 		condition = string(*rec.Condition)
 	}
-	genres := strings.Join(rec.Genres, "|")
+	genres := sanitizeCSVField(strings.Join(rec.Genres, "|"))
 	notes := ""
 	if rec.Notes != nil {
-		notes = *rec.Notes
+		notes = sanitizeCSVField(*rec.Notes)
 	}
 	coverArt := ""
 	if rec.CoverArtURL != nil {
 		coverArt = *rec.CoverArtURL
 	}
 	return []string{
-		rec.ID, rec.Title, rec.Artist, year, label, format,
-		condition, genres, notes, coverArt,
+		rec.ID, sanitizeCSVField(rec.Title), sanitizeCSVField(rec.Artist),
+		year, label, format, condition, genres, notes, coverArt,
 		rec.CreatedAt.Format(time.RFC3339),
 	}
 }
-

@@ -1,17 +1,13 @@
 /**
- * Thin GraphQL client. Reads the auth token from Alpine's store if available,
- * otherwise from localStorage directly (during boot before Alpine starts).
+ * Thin GraphQL client. Authentication is handled via the HttpOnly
+ * vynilino_access cookie that the browser sends automatically with every
+ * same-origin request (THREAT-006 mitigation).
  */
 export async function gql(query, variables = {}) {
-  const token =
-    (typeof Alpine !== 'undefined' && Alpine.store('auth')?.token) ||
-    localStorage.getItem('vynilino_token')
-
   const res = await fetch('/graphql', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ query, variables }),
   })
@@ -42,15 +38,13 @@ export async function searchDiscogs(query, type = null) {
 
 /** Subscribe to a GraphQL subscription over WebSocket (graphql-transport-ws). */
 export function subscribe(query, variables = {}, onData, onError) {
-  const token =
-    (typeof Alpine !== 'undefined' && Alpine.store('auth')?.token) ||
-    localStorage.getItem('vynilino_token')
-
+  // The browser sends the vynilino_access HttpOnly cookie with the WebSocket
+  // upgrade request automatically; no need to include it in the payload.
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
   const ws = new WebSocket(`${protocol}//${location.host}/graphql`, 'graphql-transport-ws')
 
   ws.addEventListener('open', () => {
-    ws.send(JSON.stringify({ type: 'connection_init', payload: { Authorization: `Bearer ${token}` } }))
+    ws.send(JSON.stringify({ type: 'connection_init', payload: {} }))
   })
 
   let subId = null

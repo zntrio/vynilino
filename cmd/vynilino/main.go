@@ -16,6 +16,7 @@ func main() {
 	}
 	root.AddCommand(vcmd.ServeCmd())
 	root.AddCommand(vcmd.UserCmd())
+	root.AddCommand(vcmd.BackupCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
