@@ -21,7 +21,7 @@ Key properties:
 
 ## How this project was built — vibe engineering with OpenSpec
 
-Vynilino was **vibe engineered**: the entire codebase was designed and implemented through an AI-assisted, spec-driven workflow powered by [OpenSpec](https://github.com/cbcoutinho/openspec).
+Vynilino was **vibe engineered**: the entire codebase was designed and implemented through an AI-assisted, spec-driven workflow powered by [OpenSpec](https://openspec.dev/).
 
 ### What is vibe engineering?
 
