@@ -132,7 +132,9 @@ vinyl.example.com {
 | `VYNILINO_DB_PATH`            | `./data/vynilino.db`               | SQLite database file path                        |
 | `VYNILINO_MEDIA_DIR`          | `./data/media`                     | Directory for cover art files                    |
 | `VYNILINO_TOKEN_KEY`          | *(required)*                       | 32-byte hex-encoded PASETO symmetric key         |
+| `VYNILINO_TOKEN_KEY_NEW`      | *(unset)*                          | New key during rotation bridge period; see [key rotation runbook](docs/runbooks/key-rotation.md) |
 | `VYNILINO_SINGLE_OWNER`       | `true`                             | Only one user account allowed when `true`        |
+| `VYNILINO_BOOTSTRAP_TOKEN`    | *(unset)*                          | When set, required as a one-time token for first-user registration |
 | `VYNILINO_ALLOWED_ORIGINS`    | `http://localhost:3000,...`        | Comma-separated CORS allowed origins             |
 | `VYNILINO_PLAYGROUND`         | `false` (`true` in development)    | Serve GraphQL Playground at `/playground`        |
 | `VYNILINO_INTROSPECTION`      | `false` (`true` in development)    | Enable GraphQL introspection                     |
@@ -140,6 +142,12 @@ vinyl.example.com {
 | `VYNILINO_OIDC_CLIENT_ID`     | *(unset)*                          | OIDC application client ID                       |
 | `VYNILINO_OIDC_CLIENT_SECRET` | *(unset)*                          | OIDC application client secret                   |
 | `VYNILINO_OIDC_REDIRECT_URL`  | *(unset)*                          | Callback URL registered with the OIDC provider   |
+| `VYNILINO_OIDC_AUTO_REDIRECT` | `false`                            | When `true`, `GET /login` redirects directly to the OIDC provider |
+| `VYNILINO_DISCOGS_TOKEN`      | *(unset)*                          | Personal access token for higher Discogs API rate limits |
+| `VYNILINO_BEHIND_PROXY`       | `false`                            | Trust `X-Forwarded-For` / `X-Real-IP` headers (set only behind a known reverse proxy) |
+| `VYNILINO_TLS_CERT`           | *(unset)*                          | Path to TLS certificate PEM file (enables native TLS) |
+| `VYNILINO_TLS_KEY`            | *(unset)*                          | Path to TLS private key PEM file                 |
+| `VYNILINO_BACKUP_HMAC_KEY`    | *(unset)*                          | HMAC-SHA256 key for backup authenticity signing/verification |
 
 ## API
 
@@ -229,6 +237,31 @@ All data is stored in two locations:
 - **Database**: `VYNILINO_DB_PATH` (single SQLite file)
 - **Cover art**: `VYNILINO_MEDIA_DIR` (flat directory per user)
 
+### Built-in backup CLI
+
+Vynilino ships a `backup` subcommand that creates a compact, verified snapshot using SQLite's `VACUUM INTO` and optionally signs it with HMAC-SHA256.
+
+```bash
+# Create a backup (saved next to the database file)
+vynilino backup create --db ./data/vynilino.db
+
+# Create a signed backup (recommended for tamper detection)
+vynilino backup create \
+  --db ./data/vynilino.db \
+  --output /backups/ \
+  --hmac-key "$VYNILINO_BACKUP_HMAC_KEY"
+
+# Verify backup integrity and row count
+vynilino backup verify \
+  --backup /backups/vynilino-20260325-120000.db \
+  --hmac-key "$VYNILINO_BACKUP_HMAC_KEY"
+```
+
+Each backup produces three files:
+- `<name>-<timestamp>.db` — the compacted SQLite snapshot
+- `<name>-<timestamp>.db.count` — expected row count sidecar
+- `<name>-<timestamp>.db.sig` — HMAC-SHA256 signature (only when `--hmac-key` is set)
+
 ### Example backup with restic
 
 ```bash
@@ -303,7 +336,7 @@ cp .env.example .env
 
 VYNILINO_ENV=development \
 VYNILINO_TOKEN_KEY=$(openssl rand -hex 32) \
-go run ./cmd/server
+go run ./cmd/vynilino serve
 
 # Run tests
 go test ./...
