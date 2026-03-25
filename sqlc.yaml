@@ -1,0 +1,17 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "internal/adapter/storage/sqlite/queries"
+    schema: "internal/adapter/storage/sqlite/migrations"
+    gen:
+      go:
+        package: "sqlcdb"
+        out: "internal/adapter/storage/sqlite/sqlcdb"
+        emit_json_tags: true
+        emit_prepared_queries: false
+        emit_interface: false
+        emit_exact_table_names: false
+        overrides:
+          - db_type: "INTEGER"
+            nullable: false
+            go_type: "int64"

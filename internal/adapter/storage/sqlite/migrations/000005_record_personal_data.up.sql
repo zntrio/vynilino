@@ -1,0 +1,2 @@
+ALTER TABLE records ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE records ADD COLUMN personal_note TEXT;

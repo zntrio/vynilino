@@ -1,0 +1,4 @@
+# Ignore built assets but keep the placeholder index.html so Go embed compiles.
+dist/assets/
+dist/*.js
+dist/*.css

@@ -1,0 +1,231 @@
+scalar Time
+
+# ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Format {
+  LP
+  EP
+  SINGLE
+  SEVEN_INCH
+  TEN_INCH
+  TWELVE_INCH
+}
+
+enum Condition {
+  MINT
+  NEAR_MINT
+  VERY_GOOD_PLUS
+  VERY_GOOD
+  GOOD_PLUS
+  GOOD
+  FAIR
+  POOR
+}
+
+enum SortField {
+  TITLE
+  ARTIST
+  YEAR
+  CREATED_AT
+  UPDATED_AT
+}
+
+enum SortDirection {
+  ASC
+  DESC
+}
+
+enum DiscogsSearchType {
+  RELEASE
+  MASTER
+  ALL
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+# ─── Pagination ───────────────────────────────────────────────────────────────
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+type RecordEdge {
+  cursor: String!
+  node: Record!
+}
+
+type RecordConnection {
+  edges: [RecordEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+# ─── Types ────────────────────────────────────────────────────────────────────
+
+type Record {
+  id: ID!
+  title: String!
+  artist: String!
+  year: Int
+  label: String
+  format: Format
+  condition: Condition
+  genres: [String!]!
+  notes: String
+  coverArtUrl: String
+  discogsId: String
+  favorite: Boolean!
+  personalNote: String
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type DiscogsResult {
+  discogsId: String!
+  title: String!
+  artist: String
+  year: Int
+  label: String
+  format: String
+  thumbUrl: String
+  country: String
+}
+
+type User {
+  id: ID!
+  email: String!
+  role: Role!
+  createdAt: Time!
+}
+
+type AuthPayload {
+  accessToken: String!
+  refreshToken: String!
+  expiresIn: Int!
+  user: User!
+}
+
+# ─── Inputs ───────────────────────────────────────────────────────────────────
+
+input CreateRecordInput {
+  title: String!
+  artist: String!
+  year: Int
+  label: String
+  format: Format
+  condition: Condition
+  genres: [String!]
+  notes: String
+  coverArtUrl: String
+  discogsId: String
+}
+
+input UpdateRecordInput {
+  title: String
+  artist: String
+  year: Int
+  label: String
+  format: Format
+  condition: Condition
+  genres: [String!]
+  notes: String
+  coverArtUrl: String
+  favorite: Boolean
+  personalNote: String
+}
+
+input RecordFilterInput {
+  search: String
+  artist: String
+  genre: String
+  yearMin: Int
+  yearMax: Int
+  format: Format
+  conditionMin: Condition
+  favoritesOnly: Boolean
+}
+
+input RecordSortInput {
+  field: SortField!
+  direction: SortDirection!
+}
+
+# ─── Queries ──────────────────────────────────────────────────────────────────
+
+type Query {
+  """Fetch a single record by ID."""
+  record(id: ID!): Record
+
+  """List records in the authenticated user's collection."""
+  records(
+    first: Int
+    after: String
+    filter: RecordFilterInput
+    sort: RecordSortInput
+  ): RecordConnection!
+
+  """Return the currently authenticated user."""
+  me: User!
+
+  """Search the Discogs database. Requires authentication."""
+  searchDiscogs(query: String!, type: DiscogsSearchType): [DiscogsResult!]!
+}
+
+# ─── Mutations ────────────────────────────────────────────────────────────────
+
+type CreateRecordPayload {
+  record: Record!
+  duplicateWarning: String
+}
+
+"""Returned by oidcAuthorizationURL — redirect the user to `url`."""
+type OIDCAuthURLPayload {
+  """The full authorization URL to redirect the browser to."""
+  url: String!
+  """Opaque state value; pass back to oidcCallback for correlation."""
+  state: String!
+}
+
+type Mutation {
+  # Auth
+  register(email: String!, password: String!): AuthPayload!
+  login(email: String!, password: String!): AuthPayload!
+  refreshToken(token: String!): AuthPayload!
+  logout: Boolean!
+
+  # OIDC (only available when VYNILINO_OIDC_ISSUER is configured)
+  """Generate an OIDC authorization URL with PKCE. Redirect the user to the returned URL."""
+  oidcAuthorizationURL: OIDCAuthURLPayload!
+  """Exchange the authorization code from the OIDC callback for vynilino tokens."""
+  oidcCallback(code: String!, state: String!): AuthPayload!
+
+  # Collection
+  createRecord(input: CreateRecordInput!): CreateRecordPayload!
+  updateRecord(id: ID!, input: UpdateRecordInput!): Record!
+  deleteRecord(id: ID!): Boolean!
+}
+
+# ─── Subscriptions ────────────────────────────────────────────────────────────
+
+enum RecordChangeType {
+  CREATED
+  UPDATED
+  DELETED
+}
+
+type RecordChangedEvent {
+  type: RecordChangeType!
+  record: Record
+  recordId: ID!
+}
+
+type Subscription {
+  """Subscribe to changes in the authenticated user's collection."""
+  recordChanged: RecordChangedEvent!
+}

@@ -1,0 +1,127 @@
+# Release workflow — triggers on v* tags.
+#
+# Jobs:
+#   goreleaser-slsa  — builds binaries + generates SLSA provenance (via slsa-github-generator)
+#   docker-build     — builds and pushes container image to GHCR
+#   sign-image       — signs the container image with cosign (keyless)
+#   sbom             — generates SPDX SBOM and attaches it as OCI attestation + release asset
+#
+# Pin action references to full SHAs per task 2.1:
+#   gh api repos/<OWNER>/<REPO>/git/ref/tags/<TAG> --jq .object.sha
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+jobs:
+  # ── Binaries + SLSA provenance ────────────────────────────────────────────
+  # The generator_go_slsa3 reusable workflow runs goreleaser internally,
+  # then generates and uploads signed SLSA provenance alongside the release assets.
+  goreleaser-slsa:
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_go_slsa3.yml@v2.0.0
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    with:
+      go-version-file: go.mod
+      evaluated-envs: "CGO_ENABLED:0"
+
+  # ── Container image ───────────────────────────────────────────────────────
+  docker-build:
+    name: Build & push container image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@902fa8ec7f52e6638f6b54ece4a8e03d9d8895a5 # v5.6.1
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false # cosign handles attestations below
+
+  # ── Sign container image ──────────────────────────────────────────────────
+  sign-image:
+    name: Sign container image
+    needs: docker-build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # required for keyless cosign signing
+      packages: write  # required to push signature to GHCR
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 # v3.5.0
+
+      - name: Sign image digest
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ github.repository }}@${{ needs.docker-build.outputs.digest }}
+
+  # ── SBOM generation + attestation ────────────────────────────────────────
+  sbom:
+    name: Generate SBOM and attest
+    needs: docker-build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # required for cosign keyless
+      packages: write  # required to push attestation to GHCR
+      contents: write  # required to upload to GitHub release
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 # v3.5.0
+
+      - name: Generate SPDX SBOM
+        uses: anchore/syft-action@e2d2dfa3d7b5fc47d3f05d0a67c7b3aaf50534c4 # v0.6.0
+        with:
+          image: ghcr.io/${{ github.repository }}@${{ needs.docker-build.outputs.digest }}
+          artifact-name: sbom.spdx.json
+          output-format: spdx-json
+
+      - name: Rename SBOM with version
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          cp sbom.spdx.json vynilino-${VERSION}-sbom.spdx.json
+
+      - name: Attest SBOM to image
+        run: |
+          cosign attest --yes \
+            --predicate sbom.spdx.json \
+            --type spdxjson \
+            ghcr.io/${{ github.repository }}@${{ needs.docker-build.outputs.digest }}
+
+      - name: Upload SBOM to GitHub release
+        uses: softprops/action-gh-release@e7a8f85e1c67a31e6ed99a94b41bd0b71bbee6b8 # v2.0.4
+        with:
+          files: vynilino-${{ github.ref_name }}-sbom.spdx.json

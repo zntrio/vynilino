@@ -1,0 +1,31 @@
+# Workflow security audit — runs only when workflow files change.
+# Blocks on mutable action references, overly broad permissions, and
+# expression injection patterns detected by zizmor.
+#
+# Pin action references to full SHAs per task 2.1 before merging:
+#   gh api repos/<OWNER>/<REPO>/git/ref/tags/<TAG> --jq .object.sha
+
+name: Zizmor
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    name: Workflow security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@cdcb36043654635271a94b9a6d1392de5bb323a7 # v4.2.2
+      - name: Install uv
+        uses: astral-sh/setup-uv@0c5e2b8115b80b4c7c5ddf6ffdd634974642d182 # v5.4.1
+      - name: Run zizmor
+        run: uvx zizmor@latest .

@@ -1,0 +1,27 @@
+services:
+  vynilino:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      VYNILINO_ENV: production
+      VYNILINO_LISTEN_ADDR: ":8080"
+      VYNILINO_DB_PATH: /data/vynilino.db
+      VYNILINO_MEDIA_DIR: /data/media
+      VYNILINO_TOKEN_KEY: "${VYNILINO_TOKEN_KEY}"
+      VYNILINO_SINGLE_OWNER: "true"
+      VYNILINO_ALLOWED_ORIGINS: "${VYNILINO_ALLOWED_ORIGINS:-http://localhost:3000}"
+      VYNILINO_PLAYGROUND: "false"
+      VYNILINO_INTROSPECTION: "false"
+    volumes:
+      - vynilino_data:/data
+    healthcheck:
+      test: ["CMD", "/vynilino", "-check-migrations"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  vynilino_data:
