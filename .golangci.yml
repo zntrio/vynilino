@@ -214,12 +214,12 @@ linters:
 
   exclusions:
     rules:
-      - path: internal/workers
+      # web/embed.go uses //go:embed all:dist which requires the UI to be
+      # built first (make ui-build). Skip typecheck so CI lint can run
+      # without a Node.js build step.
+      - path: web/embed\.go
         linters:
-          - dupl # currently its allow-able for workers to perform similar repetitive tasks
-      - path: docs/
-        linters:
-          - all
+          - typecheck
       - path: ".*_test.go"
         linters:
           - funlen
@@ -233,40 +233,11 @@ linters:
           - lll
           - err113
           - gocritic
-          - unused
           - unparam
       - path: cmd/
         linters:
           - funlen # Allow longer functions in main commands
-          - errcheck #Allow uncheked e.g db.CLose
-
-      - path: e2e/
-        linters:
-          - lll # Allow longer lines for test data in e2e helpers
-
-      - path: migrations/
-        linters:
-          - funlen
-          - gocognit
-
-      - path: testdata/
-        linters:
-          - all
-
-      - path: mocks/
-        linters:
-          - all
-          - cyclop
-      - path: ".*/pkg/.*"
-        linters:
-          - unused #certain functions in e.g clients may not be used
-          - unparam
-      - path: ".*/telemetry/.*"
-        linters:
-          - unparam # error return required by Tracker interface
-      - path: ".*/middleware/.*"
-        linters:
-          - unused #certain middleware may not be used
+          - errcheck # Allow unchecked e.g. db.Close
 
       # Allow specific patterns for generated code
       - text: "generated"

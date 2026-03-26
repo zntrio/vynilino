@@ -66,6 +66,9 @@ func (s *RecordService) Update(ctx context.Context, userID string, r *domain.Rec
 	if err != nil {
 		return nil, err
 	}
+	if existing == nil {
+		return nil, fmt.Errorf("record %s not found", r.ID)
+	}
 
 	// Merge: only overwrite non-nil fields from the update input.
 	applyUpdates(existing, r)

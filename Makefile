@@ -6,7 +6,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test lint nilaway clean ui-install ui-build ui-dev generate-graphql generate-sql release
+.PHONY: help build run test lint clean ui-install ui-build ui-dev generate-graphql generate-sql release
 
 # ── Colors / helpers ─────────────────────────────────────────────────────────
 BOLD   := $(shell tput bold 2>/dev/null)
@@ -68,11 +68,6 @@ lint:
 	@echo "$(GREEN)▸ Running linters…$(RESET)"
 	go vet ./...
 	golangci-lint run ./...
-
-## nilaway: Run nilaway nil-safety analysis
-nilaway:
-	go install go.uber.org/nilaway/cmd/nilaway@latest
-	nilaway ./...
 
 ## check: Run lint + tests (CI shortcut)
 check: lint test
