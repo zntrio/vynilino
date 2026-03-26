@@ -73,7 +73,7 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean --snapshot --config .goreleaser.yaml
+          args: release --clean --config .goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -164,7 +164,7 @@ jobs:
   # ── SBOM generation + attestation ──────────────────────────────────────
   sbom:
     name: Generate SBOM and attest
-    needs: docker-build
+    needs: [goreleaser, docker-build]
     runs-on: ubuntu-latest
     permissions:
       id-token: write

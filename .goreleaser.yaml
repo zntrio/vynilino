@@ -2,10 +2,14 @@ version: 2
 
 project_name: vynilino
 
+git:
+  # The UI build (npm run build) places assets into web/dist/ before GoReleaser
+  # runs. These files are .gitignored but still make the tree appear dirty.
+  allow_dirty: true
+
 before:
   hooks:
     - go mod download
-    - touch ./web/dist/.gitkeep
 
 builds:
   - id: vynilino
