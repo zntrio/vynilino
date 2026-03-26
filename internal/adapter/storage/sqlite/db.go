@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
-	migratesqlite "github.com/golang-migrate/migrate/v4/database/sqlite"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+
 	_ "modernc.org/sqlite" // SQLite driver
+
+	migratesqlite "github.com/golang-migrate/migrate/v4/database/sqlite"
 
 	"zntr.io/vynilino/internal/adapter/storage/sqlite/migrations"
 )
@@ -86,7 +88,7 @@ func runWALCheckpoint(ctx context.Context, db *sql.DB) {
 
 func dbDiskFreeStats(path string) (freeBytes uint64, freePct float64, err error) {
 	var st syscall.Statfs_t
-	if err = syscall.Statfs(path, &st); err != nil {
+	if err := syscall.Statfs(path, &st); err != nil {
 		return 0, 0, err
 	}
 	free := uint64(st.Bavail) * uint64(st.Bsize)

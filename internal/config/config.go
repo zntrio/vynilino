@@ -51,14 +51,14 @@ type Config struct {
 // Load reads configuration from environment variables.
 func Load() (*Config, error) {
 	cfg := &Config{
-		ListenAddr:  getEnv("VYNILINO_LISTEN_ADDR", ":8080"),
-		Environment: getEnv("VYNILINO_ENV", "production"),
-		DBPath:      getEnv("VYNILINO_DB_PATH", "./data/vynilino.db"),
-		MediaDir:    getEnv("VYNILINO_MEDIA_DIR", "./data/media"),
-		TokenKey:       getEnv("VYNILINO_TOKEN_KEY", ""),
-		TokenKeyNew:    getEnv("VYNILINO_TOKEN_KEY_NEW", ""),
-		SingleOwner:    getBoolEnv("VYNILINO_SINGLE_OWNER", true),
-		BootstrapToken: getEnv("VYNILINO_BOOTSTRAP_TOKEN", ""),
+		ListenAddr:       getEnv("VYNILINO_LISTEN_ADDR", ":8080"),
+		Environment:      getEnv("VYNILINO_ENV", "production"),
+		DBPath:           getEnv("VYNILINO_DB_PATH", "./data/vynilino.db"),
+		MediaDir:         getEnv("VYNILINO_MEDIA_DIR", "./data/media"),
+		TokenKey:         getEnv("VYNILINO_TOKEN_KEY", ""),
+		TokenKeyNew:      getEnv("VYNILINO_TOKEN_KEY_NEW", ""),
+		SingleOwner:      getBoolEnv("VYNILINO_SINGLE_OWNER", true),
+		BootstrapToken:   getEnv("VYNILINO_BOOTSTRAP_TOKEN", ""),
 		OIDCIssuer:       getEnv("VYNILINO_OIDC_ISSUER", ""),
 		OIDCClientID:     getEnv("VYNILINO_OIDC_CLIENT_ID", ""),
 		OIDCClientSecret: getEnv("VYNILINO_OIDC_CLIENT_SECRET", ""),

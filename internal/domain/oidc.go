@@ -25,8 +25,8 @@ type OIDCStateRepository interface {
 
 // OIDC-specific domain errors.
 var (
-	ErrOIDCNotConfigured  = errors.New("OIDC is not configured")
-	ErrOIDCInvalidState   = errors.New("invalid or unknown OIDC state")
-	ErrOIDCStateExpired   = errors.New("OIDC state has expired")
-	ErrOIDCTokenInvalid   = errors.New("OIDC ID token validation failed")
+	ErrOIDCNotConfigured = errors.New("OIDC is not configured")
+	ErrOIDCInvalidState  = errors.New("invalid or unknown OIDC state")
+	ErrOIDCStateExpired  = errors.New("OIDC state has expired")
+	ErrOIDCTokenInvalid  = errors.New("OIDC ID token validation failed")
 )

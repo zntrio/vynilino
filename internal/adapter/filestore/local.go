@@ -15,9 +15,7 @@ import (
 )
 
 // statfs is a package-level variable to allow test injection.
-var statfs = func(path string, stat *syscall.Statfs_t) error {
-	return syscall.Statfs(path, stat)
-}
+var statfs = syscall.Statfs
 
 // allowedMIME maps accepted MIME types to their canonical file extension.
 var allowedMIME = map[string]string{
@@ -78,7 +76,7 @@ func (s *FileStore) DiskFreePercent() (float64, error) {
 // diskFreeStats returns free bytes and free percentage for the given path.
 func diskFreeStats(path string) (freeBytes uint64, freePct float64, err error) {
 	var st syscall.Statfs_t
-	if err = statfs(path, &st); err != nil {
+	if err := statfs(path, &st); err != nil {
 		return 0, 0, err
 	}
 	free := uint64(st.Bavail) * uint64(st.Bsize)

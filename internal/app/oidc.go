@@ -10,8 +10,9 @@ import (
 	"sync"
 	"time"
 
-	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
+
+	gooidc "github.com/coreos/go-oidc/v3/oidc"
 
 	"zntr.io/vynilino/internal/config"
 	"zntr.io/vynilino/internal/domain"

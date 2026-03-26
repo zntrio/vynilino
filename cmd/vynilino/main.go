@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
 	vcmd "zntr.io/vynilino/cmd/vynilino/internal/cmd"
 )
 

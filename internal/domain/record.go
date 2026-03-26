@@ -84,16 +84,16 @@ const (
 
 // RecordFilter contains search/filter criteria for listing records.
 type RecordFilter struct {
-	Search       *string
-	Artist       *string
-	Genre        *string
-	YearMin      *int
-	YearMax      *int
-	Format       *Format
-	ConditionMin *Condition
+	Search        *string
+	Artist        *string
+	Genre         *string
+	YearMin       *int
+	YearMax       *int
+	Format        *Format
+	ConditionMin  *Condition
 	FavoritesOnly bool
-	Sort         SortField
-	Direction    SortDirection
+	Sort          SortField
+	Direction     SortDirection
 }
 
 // Page contains pagination parameters.

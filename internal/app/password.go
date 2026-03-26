@@ -1,8 +1,6 @@
 package app
 
 import (
-	"errors"
-
 	"github.com/alexedwards/argon2id"
 
 	"zntr.io/vynilino/internal/domain"
@@ -41,11 +39,6 @@ const dummyHash = "$argon2id$v=19$m=65536,t=3,p=2$c29tZXNhbHRzb21lc2FsdA$" +
 // constantTimeReject performs a dummy hash comparison to prevent timing attacks.
 func constantTimeReject() {
 	_, _ = argon2id.ComparePasswordAndHash("dummy_password_for_timing", dummyHash)
-}
-
-// isNotFound reports whether err is a domain.ErrNotFound.
-func isNotFound(err error) bool {
-	return errors.Is(err, domain.ErrNotFound)
 }
 
 // HashPassword hashes a plaintext password using the application's Argon2id parameters.

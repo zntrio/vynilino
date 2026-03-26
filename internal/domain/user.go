@@ -16,15 +16,15 @@ const (
 
 // User represents an authenticated user.
 type User struct {
-	ID                string
-	Email             string
-	PasswordHash      string
-	Role              Role
-	Active            bool
-	FailedLoginCount  int
-	LockedUntil       *time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID               string
+	Email            string
+	PasswordHash     string
+	Role             Role
+	Active           bool
+	FailedLoginCount int
+	LockedUntil      *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // IsLocked reports whether the account is currently locked.
@@ -62,13 +62,13 @@ type OIDCIdentityRepository interface {
 
 // Common domain errors.
 var (
-	ErrNotFound           = errors.New("not found")
-	ErrEmailTaken         = errors.New("email already in use")
-	ErrWeakPassword       = errors.New("password does not meet complexity requirements")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrAccountLocked      = errors.New("account is temporarily locked")
-	ErrAccountDisabled    = errors.New("account is disabled")
-	ErrRegistrationClosed    = errors.New("registration is closed")
-	ErrInvalidToken          = errors.New("invalid or expired token")
+	ErrNotFound               = errors.New("not found")
+	ErrEmailTaken             = errors.New("email already in use")
+	ErrWeakPassword           = errors.New("password does not meet complexity requirements")
+	ErrInvalidCredentials     = errors.New("invalid credentials")
+	ErrAccountLocked          = errors.New("account is temporarily locked")
+	ErrAccountDisabled        = errors.New("account is disabled")
+	ErrRegistrationClosed     = errors.New("registration is closed")
+	ErrInvalidToken           = errors.New("invalid or expired token")
 	ErrBootstrapTokenRequired = errors.New("bootstrap token required for first registration")
 )

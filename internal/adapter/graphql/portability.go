@@ -21,7 +21,7 @@ import (
 const (
 	maxImportBytes  = 10 << 20 // 10 MB
 	importBatchSize = 50
-	importBackoffMs = 10 * time.Millisecond
+	importBackoff   = 10 * time.Millisecond
 )
 
 // importInProgress tracks per-user in-progress CSV imports.
@@ -147,8 +147,8 @@ func importCSVHandler(svc *app.RecordService, bus *app.EventBus) http.HandlerFun
 	}
 }
 
-func processCSVImport(ctx context.Context, svc *app.RecordService, bus *app.EventBus, userID string, r io.Reader) (imported, skipped int, errs []string, cancelled bool) {
-	cr := csv.NewReader(r)
+func processCSVImport(ctx context.Context, svc *app.RecordService, bus *app.EventBus, userID string, reader io.Reader) (imported, skipped int, errs []string, cancelled bool) {
+	cr := csv.NewReader(reader)
 	cr.TrimLeadingSpace = true
 
 	headers, err := cr.Read()
@@ -171,7 +171,7 @@ func processCSVImport(ctx context.Context, svc *app.RecordService, bus *app.Even
 		} else {
 			imported += len(results)
 			if bus.HasSubscribers(userID) {
-				time.Sleep(importBackoffMs)
+				time.Sleep(importBackoff)
 			}
 		}
 		batch = batch[:0]
@@ -182,7 +182,7 @@ func processCSVImport(ctx context.Context, svc *app.RecordService, bus *app.Even
 		case <-ctx.Done():
 			flush()
 			cancelled = true
-			return
+			return imported, skipped, errs, cancelled
 		default:
 		}
 
@@ -209,7 +209,7 @@ func processCSVImport(ctx context.Context, svc *app.RecordService, bus *app.Even
 		}
 	}
 	flush()
-	return
+	return imported, skipped, errs, cancelled
 }
 
 // isDiscogsCSV detects a Discogs-format CSV by header names.

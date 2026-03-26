@@ -19,9 +19,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
-	"github.com/vektah/gqlparser/v2/ast"
-
 	"github.com/google/uuid"
+	"github.com/vektah/gqlparser/v2/ast"
 
 	"zntr.io/vynilino/internal/adapter/filestore"
 	"zntr.io/vynilino/internal/adapter/graphql/graph"
@@ -268,7 +267,7 @@ func newHealthHandler(db *sql.DB, fs *filestore.FileStore) http.HandlerFunc {
 		}
 		diskPct, _ := fs.DiskFreePercent()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"status":"ok","db":%q,"disk_free_pct":%.1f}`, dbStatus, diskPct)))
+		fmt.Fprintf(w, `{"status":"ok","db":%q,"disk_free_pct":%.1f}`, dbStatus, diskPct)
 	}
 }
 
@@ -352,4 +351,3 @@ func serveCoverArtHandler(fs *filestore.FileStore) http.HandlerFunc {
 		http.ServeContent(w, r, filename, time.Time{}, f)
 	}
 }
-

@@ -15,7 +15,7 @@ import (
 // ─── In-memory stubs ──────────────────────────────────────────────────────────
 
 type memUserRepo struct {
-	users  map[string]*domain.User
+	users   map[string]*domain.User
 	byEmail map[string]*domain.User
 }
 
@@ -49,7 +49,7 @@ func (r *memUserRepo) GetByEmail(_ context.Context, email string) (*domain.User,
 	}
 	return u, nil
 }
-func (r *memUserRepo) Count(_ context.Context) (int, error)  { return len(r.users), nil }
+func (r *memUserRepo) Count(_ context.Context) (int, error) { return len(r.users), nil }
 func (r *memUserRepo) RecordLoginFailure(_ context.Context, userID string, lockUntil *time.Time) error {
 	u, ok := r.users[userID]
 	if !ok {
@@ -66,14 +66,14 @@ func (r *memUserRepo) ResetLoginFailure(_ context.Context, userID string) error 
 	}
 	return nil
 }
-func (r *memUserRepo) ListAll(_ context.Context) ([]*domain.User, error)                     { return nil, nil }
-func (r *memUserRepo) DeactivateUser(_ context.Context, email string) error                  { return nil }
-func (r *memUserRepo) ActivateUser(_ context.Context, email string) error                    { return nil }
-func (r *memUserRepo) UpdatePassword(_ context.Context, email, hash string) error            { return nil }
+func (r *memUserRepo) ListAll(_ context.Context) ([]*domain.User, error)          { return nil, nil }
+func (r *memUserRepo) DeactivateUser(_ context.Context, email string) error       { return nil }
+func (r *memUserRepo) ActivateUser(_ context.Context, email string) error         { return nil }
+func (r *memUserRepo) UpdatePassword(_ context.Context, email, hash string) error { return nil }
 
 type memTokenRepo struct {
-	tokens  map[string]*domain.RefreshToken // by ID
-	byHash  map[string]*domain.RefreshToken
+	tokens map[string]*domain.RefreshToken // by ID
+	byHash map[string]*domain.RefreshToken
 }
 
 func newMemTokenRepo() *memTokenRepo {

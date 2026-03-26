@@ -248,7 +248,9 @@ func (r *recordRepository) listFiltered(ctx context.Context, userID string, filt
 		"SELECT * FROM records WHERE %s ORDER BY %s %s NULLS LAST LIMIT ? OFFSET ?",
 		whereClause, sortCol, dir,
 	)
-	dataArgs := append(args, limit, page.Offset)
+	dataArgs := make([]any, len(args), len(args)+2)
+	copy(dataArgs, args)
+	dataArgs = append(dataArgs, limit, page.Offset)
 	rows, err := r.db.QueryContext(ctx, dataQuery, dataArgs...)
 	if err != nil {
 		return nil, 0, err
@@ -366,8 +368,8 @@ func toNullStringV(v *string) sql.NullString {
 }
 
 // conditionGrades returns all conditions >= minCondition.
-func conditionGrades(min domain.Condition) []string {
-	minRank := domain.ConditionOrder[min]
+func conditionGrades(minCond domain.Condition) []string {
+	minRank := domain.ConditionOrder[minCond]
 	var out []string
 	for c, rank := range domain.ConditionOrder {
 		if rank >= minRank {

@@ -18,6 +18,10 @@ import (
 // accessCookieName is the HttpOnly cookie that carries the PASETO access token.
 const accessCookieName = "vynilino_access"
 
+type mutationResolver struct{ *Resolver }
+type queryResolver struct{ *Resolver }
+type subscriptionResolver struct{ *Resolver }
+
 // setAccessCookie writes (or clears) the HttpOnly access-token cookie on the
 // current HTTP response (THREAT-006 mitigation).
 // Pass ttl > 0 to set the cookie, ttl < 0 to clear it.
@@ -38,7 +42,7 @@ func setAccessCookie(ctx context.Context, token string, ttl int) {
 }
 
 // Register is the resolver for the register field.
-func (r *mutationResolver) Register(ctx context.Context, email string, password string) (*AuthPayload, error) {
+func (r *mutationResolver) Register(ctx context.Context, email, password string) (*AuthPayload, error) {
 	pair, err := r.UserSvc.Register(ctx, email, password)
 	if err != nil {
 		return nil, gqlErr(err)
@@ -52,7 +56,7 @@ func (r *mutationResolver) Register(ctx context.Context, email string, password 
 }
 
 // Login is the resolver for the login field.
-func (r *mutationResolver) Login(ctx context.Context, email string, password string) (*AuthPayload, error) {
+func (r *mutationResolver) Login(ctx context.Context, email, password string) (*AuthPayload, error) {
 	pair, err := r.UserSvc.Login(ctx, email, password)
 	if err != nil {
 		return nil, gqlErr(err)
@@ -107,7 +111,7 @@ func (r *mutationResolver) OidcAuthorizationURL(ctx context.Context) (*OIDCAuthU
 }
 
 // OidcCallback is the resolver for the oidcCallback field.
-func (r *mutationResolver) OidcCallback(ctx context.Context, code string, state string) (*AuthPayload, error) {
+func (r *mutationResolver) OidcCallback(ctx context.Context, code, state string) (*AuthPayload, error) {
 	if r.OIDCSvc == nil {
 		return nil, gqlErr(domain.ErrOIDCNotConfigured)
 	}
@@ -354,7 +358,3 @@ func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
 // Subscription returns SubscriptionResolver implementation.
 func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
-
-type mutationResolver struct{ *Resolver }
-type queryResolver struct{ *Resolver }
-type subscriptionResolver struct{ *Resolver }
