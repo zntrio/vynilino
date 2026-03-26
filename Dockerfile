@@ -14,7 +14,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-COPY --from=ui-builder /src/ui/dist ./ui/dist
+COPY --from=ui-builder /src/web/dist ./web/dist
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -buildid=" -o /vynilino ./cmd/vynilino
 
 # ── Stage 3: Runtime ──────────────────────────────────────────────────────────
