@@ -5,7 +5,7 @@ project_name: vynilino
 before:
   hooks:
     - go mod download
-    - touch web/ui/.gitkeep
+    - touch web/dist/.gitkeep
 
 builds:
   - id: vynilino
