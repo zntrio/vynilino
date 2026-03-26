@@ -106,7 +106,7 @@ release: check
 		exit 1; \
 	fi
 	@echo "$(GREEN)▸ Tagging v$(VERSION)…$(RESET)"
-	git tag -S -a "v$(VERSION)" -m "Release v$(VERSION)"
+	git tag -s -a "v$(VERSION)" -m "Release v$(VERSION)"
 	@echo "$(GREEN)▸ Pushing tag to origin…$(RESET)"
 	git push origin "v$(VERSION)"
 	@echo "$(GREEN)✓ Release v$(VERSION) triggered — check GitHub Actions for progress$(RESET)"
