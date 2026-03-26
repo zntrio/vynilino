@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -57,10 +58,18 @@ func NewRouter(
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeadersMiddleware(cfg.IsDevelopment()))
-	// Store the ResponseWriter in context so resolvers can set cookies.
+	// Store the ResponseWriter and client info (IP, User-Agent) in context.
+	// ResponseWriter is needed by resolvers to set cookies (THREAT-006).
+	// ClientInfo is used for audit logging in auth services.
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r.WithContext(ctxutil.WithResponseWriter(r.Context(), w)))
+			ip := r.RemoteAddr
+			if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+				ip = host
+			}
+			ctx := ctxutil.WithResponseWriter(r.Context(), w)
+			ctx = ctxutil.WithClientInfo(ctx, ip, r.Header.Get("User-Agent"))
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
 	r.Use(cors.Handler(cors.Options{
@@ -70,7 +79,7 @@ func NewRouter(
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
-	r.Use(AuthMiddleware(userSvc))
+	r.Use(AuthMiddleware(userSvc, userSvc))
 
 	// ── Health ───────────────────────────────────────────────────────────────
 	r.Get("/health", newHealthHandler(db, fileStore))
@@ -104,6 +113,17 @@ func NewRouter(
 		r.Use(requireAuthMiddleware)
 		r.Post("/csv", importCSVHandler(recordSvc, bus))
 	})
+
+	// ── OIDC server-side flow (must precede SPA catch-all) ───────────────────
+	// Guard against typed-nil *app.OIDCService becoming a non-nil interface value.
+	var authorizeSvc oidcURLProvider
+	var callbackSvc oidcCallbackSvc
+	if oidcSvc != nil {
+		authorizeSvc = oidcSvc
+		callbackSvc = oidcSvc
+	}
+	r.Get("/oidc/authorize", oidcAuthorizeHandler(authorizeSvc))
+	r.Get("/oidc/callback", oidcCallbackHandler(callbackSvc))
 
 	// ── UI (must be last — SPA fallback catches all remaining GET paths) ──────
 	uiHandler := uiadapter.New(staticFiles, userRepo, fileStore)
@@ -156,6 +176,9 @@ func newGraphQLHandler(
 			}
 			userID, err := userSvc.ValidateAccessToken(token)
 			if err != nil {
+				return ctx, nil, fmt.Errorf("unauthorized")
+			}
+			if !userSvc.IsActiveUser(ctx, userID) {
 				return ctx, nil, fmt.Errorf("unauthorized")
 			}
 			return ctxutil.WithUserID(ctx, userID), &initPayload, nil

@@ -118,6 +118,9 @@ func (r *userRepository) ActivateUser(ctx context.Context, email string) error {
 }
 
 func (r *userRepository) UpdatePassword(ctx context.Context, email, passwordHash string) error {
+	if _, err := r.GetByEmail(ctx, email); err != nil {
+		return err // already domain.ErrNotFound if the email is unknown
+	}
 	return r.q.ChangeUserPassword(ctx, sqlcdb.ChangeUserPasswordParams{
 		PasswordHash: passwordHash,
 		UpdatedAt:    time.Now().Unix(),

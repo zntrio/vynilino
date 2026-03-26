@@ -1,4 +1,4 @@
-import Alpine from 'alpinejs'
+import Alpine from '@alpinejs/csp'
 import { gql } from '../lib/gql.js'
 import { router } from '../router.js'
 
@@ -11,11 +11,20 @@ const LOGIN_MUTATION = /* graphql */`
   }
 `
 
+const _oidcErrors = {
+  auth_failed: 'Authentication failed. Please try again.',
+  oidc_not_configured: 'Single sign-on is not configured.',
+  oidc_unavailable: 'SSO provider is unavailable.',
+  access_denied: 'Access was denied by the identity provider.',
+}
+
 export function Login(container) {
-  Alpine.data('loginForm', () => ({
+  Alpine.data('loginForm', () => {
+    const _raw = new URLSearchParams(window.location.search).get('error') ?? ''
+    return {
     email: '',
     password: '',
-    error: '',
+    error: _oidcErrors[_raw] ?? (_raw ? `Login error: ${_raw}` : ''),
     loading: false,
 
     async submit() {
@@ -33,7 +42,7 @@ export function Login(container) {
         this.loading = false
       }
     },
-  }))
+  }})
 
   container.innerHTML = /* html */`
   <div class="min-h-screen flex items-center justify-center p-4 bg-zinc-950">
@@ -83,6 +92,12 @@ export function Login(container) {
             <span x-show="!loading">Sign in</span>
             <span x-show="loading">Signing in…</span>
           </button>
+
+          <div class="text-center mt-2">
+            <a href="/oidc/authorize" class="text-sm text-violet-400 hover:text-violet-300 underline">
+              Sign in with SSO
+            </a>
+          </div>
         </form>
       </div>
     </div>

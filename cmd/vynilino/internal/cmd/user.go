@@ -5,9 +5,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -29,6 +32,9 @@ func UserCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "user",
 		Short: "Manage users",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+		},
 	}
 	cmd.PersistentFlags().StringVar(&dbPath, "db", defaultDB, "path to SQLite database (default: $VYNILINO_DB_PATH or ./vynilino.db)")
 
@@ -42,7 +48,7 @@ func UserCmd() *cobra.Command {
 }
 
 func openUserRepo(dbPath string) (domain.UserRepository, *sql.DB, error) {
-	db, err := sqlite.Open(context.Background(), dbPath)
+	db, err := sqlite.Open(context.Background(), dbPath, time.Minute)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open db %s: %w", dbPath, err)
 	}
@@ -208,6 +214,16 @@ func userChangePasswordCmd(dbPath *string) *cobra.Command {
 				return err
 			}
 
+			if !passwordStdin {
+				confirm, err := readPassword(false, "Confirm password: ")
+				if err != nil {
+					return err
+				}
+				if password != confirm {
+					return fmt.Errorf("passwords do not match")
+				}
+			}
+
 			if err := app.ValidatePasswordStrength(password); err != nil {
 				return err
 			}
@@ -226,6 +242,7 @@ func userChangePasswordCmd(dbPath *string) *cobra.Command {
 			if err := repo.UpdatePassword(context.Background(), email, hash); err != nil {
 				return err
 			}
+			fmt.Fprintf(os.Stderr, "audit: password updated for %s\n", email)
 			fmt.Printf("Password updated for %s\n", email)
 			return nil
 		},

@@ -30,6 +30,8 @@ func gqlErr(err error) error {
 		return fmt.Errorf("OIDC_STATE_EXPIRED")
 	case errors.Is(err, domain.ErrOIDCTokenInvalid):
 		return fmt.Errorf("OIDC_TOKEN_INVALID")
+	case errors.Is(err, domain.ErrOIDCUserForbidden):
+		return fmt.Errorf("FORBIDDEN")
 	default:
 		return err
 	}

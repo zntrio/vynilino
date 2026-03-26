@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
+	"go.uber.org/fx/fxevent"
 
 	"zntr.io/vynilino/internal/adapter/discogs"
 	"zntr.io/vynilino/internal/adapter/filestore"
@@ -47,6 +48,7 @@ func ServeCmd() *cobra.Command {
 			}
 
 			fx.New(
+				fx.WithLogger(func() fxevent.Logger { return fxevent.NopLogger }),
 				fx.Supply(cfg),
 				fx.Provide(
 					newDB,
@@ -78,13 +80,13 @@ func ServeCmd() *cobra.Command {
 func newDB(lc fx.Lifecycle, cfg *config.Config) (*sql.DB, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{OnStop: func(_ context.Context) error { cancel(); return nil }})
-	return sqlite.Open(ctx, cfg.DBPath)
+	return sqlite.Open(ctx, cfg.DBPath, cfg.DiskMetricPeriod)
 }
 
 func newFileStore(lc fx.Lifecycle, cfg *config.Config) (*filestore.FileStore, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{OnStop: func(_ context.Context) error { cancel(); return nil }})
-	return filestore.New(ctx, cfg.MediaDir)
+	return filestore.New(ctx, cfg.MediaDir, cfg.DiskMetricPeriod)
 }
 
 func newStaticFS() fs.FS {
@@ -92,7 +94,7 @@ func newStaticFS() fs.FS {
 }
 
 func newDiscogsClient(cfg *config.Config) (app.DiscogsSearcher, error) {
-	return discogs.New(cfg.DiscogsToken, "vynilino/1.0 +https://github.com/zntr-io/vynilino")
+	return discogs.New(cfg.DiscogsToken, "vynilino/1.0 +https://github.com/zntrio/vynilino")
 }
 
 func newUserService(

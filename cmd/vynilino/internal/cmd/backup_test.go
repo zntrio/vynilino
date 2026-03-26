@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"zntr.io/vynilino/cmd/vynilino/internal/cmd"
 	"zntr.io/vynilino/internal/adapter/storage/sqlite"
@@ -21,7 +22,7 @@ func newTestSQLiteDB(t *testing.T) string {
 	}
 	f.Close()
 
-	db, err := sqlite.Open(context.Background(), f.Name())
+	db, err := sqlite.Open(context.Background(), f.Name(), time.Minute)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

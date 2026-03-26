@@ -1,6 +1,7 @@
 package graphql
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -13,16 +14,26 @@ type tokenValidator interface {
 	ValidateAccessToken(token string) (string, error)
 }
 
+// userLookup verifies that a user exists in the store and is active.
+// It is a subset of domain.UserRepository used only by AuthMiddleware.
+type userLookup interface {
+	IsActiveUser(ctx context.Context, id string) bool
+}
+
 // AuthMiddleware extracts and validates the Bearer token from the Authorization
 // header, injecting the user ID into the request context via ctxutil.
+// After cryptographic validation it also verifies the user still exists in the
+// store and has not been deactivated.
 // Unauthenticated requests pass through — resolvers enforce auth themselves.
-func AuthMiddleware(validator tokenValidator) func(http.Handler) http.Handler {
+func AuthMiddleware(validator tokenValidator, users userLookup) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := extractBearerToken(r)
 			if token != "" {
 				if userID, err := validator.ValidateAccessToken(token); err == nil {
-					r = r.WithContext(ctxutil.WithUserID(r.Context(), userID))
+					if users.IsActiveUser(r.Context(), userID) {
+						r = r.WithContext(ctxutil.WithUserID(r.Context(), userID))
+					}
 				}
 			}
 			if bt := r.Header.Get("X-Bootstrap-Token"); bt != "" {

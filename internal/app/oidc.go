@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
 
 	"zntr.io/vynilino/internal/config"
+	"zntr.io/vynilino/internal/ctxutil"
 	"zntr.io/vynilino/internal/domain"
 )
 
@@ -150,23 +153,45 @@ func (s *OIDCService) HandleCallback(ctx context.Context, code, stateVal string)
 		return nil, domain.ErrOIDCTokenInvalid
 	}
 
+	client := ctxutil.ClientInfoFromContext(ctx)
+
 	userID, err := s.resolveUser(ctx, s.cfg.OIDCIssuer, claims.Subject, claims.Email, claims.EmailVerified)
 	if err != nil {
+		outcome := "resolve_failed"
+		if errors.Is(err, domain.ErrOIDCUserForbidden) {
+			outcome = "forbidden"
+		}
+		slog.InfoContext(ctx, "auth.login", "method", "oidc", "outcome", outcome, "ip", client.IP, "user_agent", client.UserAgent)
 		return nil, err
 	}
 
 	user, err := s.userSvc.users.GetByID(ctx, userID)
 	if err != nil {
+		slog.InfoContext(ctx, "auth.login", "method", "oidc", "outcome", "resolve_failed", "ip", client.IP, "user_agent", client.UserAgent)
 		return nil, err
 	}
 	if !user.Active {
+		slog.InfoContext(ctx, "auth.login", "method", "oidc", "outcome", "account_disabled", "email", claims.Email, "user_id", userID, "ip", client.IP, "user_agent", client.UserAgent)
 		return nil, domain.ErrAccountDisabled
 	}
+	if user.Email == "" {
+		slog.InfoContext(ctx, "auth.login", "method", "oidc", "outcome", "forbidden", "user_id", userID, "ip", client.IP, "user_agent", client.UserAgent)
+		return nil, domain.ErrOIDCUserForbidden
+	}
 
-	return s.userSvc.issueTokenPair(ctx, userID)
+	pair, err := s.userSvc.issueTokenPair(ctx, userID)
+	if err != nil {
+		slog.InfoContext(ctx, "auth.login", "method", "oidc", "outcome", "server_error", "email", claims.Email, "user_id", userID, "ip", client.IP, "user_agent", client.UserAgent)
+		return nil, err
+	}
+	slog.InfoContext(ctx, "auth.login", "method", "oidc", "outcome", "success", "email", claims.Email, "user_id", userID, "ip", client.IP, "user_agent", client.UserAgent)
+	return pair, nil
 }
 
-// resolveUser finds or provisions a vynilino user for the given OIDC identity.
+// resolveUser finds a vynilino user for the given OIDC identity.
+// It first checks for an existing OIDC identity link, then falls back to
+// matching by verified email. Auto-provisioning is intentionally disabled:
+// SSO users must already exist in the local directory.
 func (s *OIDCService) resolveUser(ctx context.Context, provider, subject, email string, emailVerified bool) (string, error) {
 	// 1. Check existing OIDC identity link.
 	identity, err := s.identityRepo.FindByProviderSubject(ctx, provider, subject)
@@ -192,28 +217,8 @@ func (s *OIDCService) resolveUser(ctx context.Context, provider, subject, email 
 		}
 	}
 
-	// 3. Auto-provision a new account via the shared atomic bootstrap path.
-	// Only assign email if it's verified; unverified emails are not trustworthy
-	// and may collide with an existing local account.
-	provisionEmail := ""
-	if emailVerified {
-		provisionEmail = email
-	}
-
-	newUser, err := s.userSvc.BootstrapProvisionUser(ctx, provisionEmail)
-	if err != nil {
-		return "", err
-	}
-
-	if err := s.identityRepo.Create(ctx, &domain.OIDCIdentity{
-		UserID:   newUser.ID,
-		Provider: provider,
-		Subject:  subject,
-	}); err != nil {
-		return "", err
-	}
-
-	return newUser.ID, nil
+	// No matching user found and auto-provisioning is disabled.
+	return "", domain.ErrOIDCUserForbidden
 }
 
 func (s *OIDCService) getProvider(ctx context.Context) (*gooidc.Provider, error) {

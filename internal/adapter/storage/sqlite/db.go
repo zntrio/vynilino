@@ -22,7 +22,7 @@ import (
 // Open opens a SQLite database at the given path, enables WAL mode,
 // runs pending migrations, and returns the connection.
 // Background goroutines for disk metrics and WAL checkpoints run until ctx is cancelled.
-func Open(ctx context.Context, path string) (*sql.DB, error) {
+func Open(ctx context.Context, path string, diskMetricPeriod time.Duration) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -41,15 +41,15 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 	}
 
 	dbDir := filepath.Dir(path)
-	go monitorDBDisk(ctx, dbDir)
+	go monitorDBDisk(ctx, dbDir, diskMetricPeriod)
 	go runWALCheckpoint(ctx, db)
 
 	return db, nil
 }
 
-// monitorDBDisk emits disk usage metrics for the SQLite directory every 60 s.
-func monitorDBDisk(ctx context.Context, dir string) {
-	ticker := time.NewTicker(60 * time.Second)
+// monitorDBDisk emits disk usage metrics for the SQLite directory every period.
+func monitorDBDisk(ctx context.Context, dir string, period time.Duration) {
+	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 	for {
 		select {

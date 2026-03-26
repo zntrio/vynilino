@@ -1,4 +1,4 @@
-import Alpine from 'alpinejs'
+import Alpine from '@alpinejs/csp'
 
 const LOGIN_MUTATION = /* graphql */`
   mutation Login($email: String!, $password: String!) {
@@ -42,10 +42,19 @@ Alpine.store('toast', {
   },
 })
 
-Alpine.data('loginForm', () => ({
+const _oidcErrors = {
+  auth_failed: 'Authentication failed. Please try again.',
+  oidc_not_configured: 'Single sign-on is not configured.',
+  oidc_unavailable: 'SSO provider is unavailable.',
+  access_denied: 'Access was denied by the identity provider.',
+}
+
+Alpine.data('loginForm', () => {
+  const _raw = new URLSearchParams(window.location.search).get('error') ?? ''
+  return {
   email: '',
   password: '',
-  error: '',
+  error: _oidcErrors[_raw] ?? (_raw ? `Login error: ${_raw}` : ''),
   loading: false,
 
   async submit() {
@@ -61,7 +70,7 @@ Alpine.data('loginForm', () => ({
       this.loading = false
     }
   },
-}))
+}})
 
 document.getElementById('login-app').innerHTML = /* html */`
 <div class="min-h-screen flex items-center justify-center p-4 bg-zinc-950">
@@ -111,6 +120,12 @@ document.getElementById('login-app').innerHTML = /* html */`
           <span x-show="!loading">Sign in</span>
           <span x-show="loading">Signing in…</span>
         </button>
+
+        <div class="text-center mt-2">
+          <a href="/oidc/authorize" class="text-sm text-violet-400 hover:text-violet-300 underline">
+            Sign in with SSO
+          </a>
+        </div>
       </form>
     </div>
   </div>

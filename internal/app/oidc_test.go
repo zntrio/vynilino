@@ -153,66 +153,41 @@ func TestOIDCService_InvalidState(t *testing.T) {
 	}
 }
 
-func TestOIDCService_RegistrationClosedInSingleOwnerMode(t *testing.T) {
+func TestOIDCService_UnknownUserForbidden(t *testing.T) {
 	users := newMemUserRepo()
 	tokens := newMemTokenRepo()
-	// Create one existing user so single-owner blocks provisioning.
-	_, _ = users.Create(context.Background(), &domain.User{Email: "existing@example.com", PasswordHash: "h", Role: domain.RoleAdmin})
-
-	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, "", true /* singleOwner */, "")
+	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, "", false, "")
 
 	cfg := testOIDCConfig()
-	svc, _, stateRepo := newOIDCService(t, cfg, userSvc)
+	svc, _, _ := newOIDCService(t, cfg, userSvc)
 	if svc == nil {
 		t.Skip("OIDC not configured")
 	}
 
-	// Inject a valid (non-expired) state.
-	_ = stateRepo.Create(context.Background(), &domain.OIDCState{
-		State:        "s",
-		Nonce:        "n",
-		CodeVerifier: "v",
-	})
-
-	// HandleCallback will fail at OIDC token exchange (no real provider),
-	// but we specifically want to test registration-closed; so we test
-	// resolveUser indirectly by calling the exported method and checking
-	// that a NOT ErrOIDCTokenInvalid path leads to ErrRegistrationClosed.
-	// Since we can't mock the real HTTP exchange, we call a test-visible
-	// helper via exported func (see oidc_export_test.go).
+	// No user exists → must be forbidden, not auto-provisioned.
 	err := svc.ResolveUserForTest(context.Background(), "https://accounts.example.com", "sub-new", "new@example.com", true)
-	if err != domain.ErrRegistrationClosed {
-		t.Fatalf("expected ErrRegistrationClosed, got %v", err)
+	if err != domain.ErrOIDCUserForbidden {
+		t.Fatalf("expected ErrOIDCUserForbidden, got %v", err)
 	}
 }
 
-func TestOIDCService_UnverifiedEmailSkipsLinking(t *testing.T) {
+func TestOIDCService_UnverifiedEmailForbidden(t *testing.T) {
 	users := newMemUserRepo()
 	tokens := newMemTokenRepo()
-	// Create a user with the email we'll try to link.
+	// Create a user with the email we'll try to link — but with unverified email.
 	_, _ = users.Create(context.Background(), &domain.User{Email: "alice@example.com", PasswordHash: "h", Role: domain.RoleAdmin})
 
 	userSvc, _ := app.NewUserService(users, tokens, testKeyHex, "", false, "")
 
 	cfg := testOIDCConfig()
-	svc, identityRepo, _ := newOIDCService(t, cfg, userSvc)
+	svc, _, _ := newOIDCService(t, cfg, userSvc)
 	if svc == nil {
 		t.Skip("OIDC not configured")
 	}
 
-	// emailVerified=false → should NOT link, should provision a new account.
+	// emailVerified=false → no link attempt, no provisioning → forbidden.
 	err := svc.ResolveUserForTest(context.Background(), "https://accounts.example.com", "sub-xyz", "alice@example.com", false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// The identity should have been created for the new user, not Alice's user.
-	id, err := identityRepo.FindByProviderSubject(context.Background(), "https://accounts.example.com", "sub-xyz")
-	if err != nil {
-		t.Fatalf("identity not created: %v", err)
-	}
-	// Verify it's NOT linked to the existing user (alice@example.com → user-alice@example.com).
-	if id.UserID == "user-alice@example.com" {
-		t.Fatal("unverified email should not link to existing user")
+	if err != domain.ErrOIDCUserForbidden {
+		t.Fatalf("expected ErrOIDCUserForbidden, got %v", err)
 	}
 }

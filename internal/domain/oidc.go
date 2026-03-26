@@ -29,4 +29,5 @@ var (
 	ErrOIDCInvalidState  = errors.New("invalid or unknown OIDC state")
 	ErrOIDCStateExpired  = errors.New("OIDC state has expired")
 	ErrOIDCTokenInvalid  = errors.New("OIDC ID token validation failed")
+	ErrOIDCUserForbidden = errors.New("SSO login forbidden: user does not exist in the local directory")
 )

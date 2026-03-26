@@ -1,4 +1,4 @@
-import Alpine from 'alpinejs'
+import Alpine from '@alpinejs/csp'
 import { gql } from '../lib/gql.js'
 import { router } from '../router.js'
 import { renderShell } from '../components/AppShell.js'

@@ -20,7 +20,7 @@ func newTestDB(t *testing.T) *testRepos {
 	}
 	f.Close()
 
-	db, err := sqlite.Open(t.Context(), f.Name())
+	db, err := sqlite.Open(t.Context(), f.Name(), time.Minute)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -103,6 +103,38 @@ func TestUserRepo_LoginFailure(t *testing.T) {
 	got, _ = r.users.GetByID(ctx, u.ID)
 	if got.FailedLoginCount != 0 {
 		t.Fatalf("expected FailedLoginCount=0 after reset, got %d", got.FailedLoginCount)
+	}
+}
+
+func TestUserRepo_UpdatePassword(t *testing.T) {
+	r := newTestDB(t)
+	ctx := context.Background()
+
+	_, err := r.users.Create(ctx, &domain.User{Email: "alice@example.com", PasswordHash: "oldhash", Role: domain.RoleUser})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := r.users.UpdatePassword(ctx, "alice@example.com", "newhash"); err != nil {
+		t.Fatalf("UpdatePassword: %v", err)
+	}
+
+	got, err := r.users.GetByEmail(ctx, "alice@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail: %v", err)
+	}
+	if got.PasswordHash != "newhash" {
+		t.Fatalf("expected PasswordHash=newhash, got %q", got.PasswordHash)
+	}
+}
+
+func TestUserRepo_UpdatePassword_NotFound(t *testing.T) {
+	r := newTestDB(t)
+	ctx := context.Background()
+
+	err := r.users.UpdatePassword(ctx, "nobody@example.com", "hash")
+	if err != domain.ErrNotFound {
+		t.Fatalf("expected ErrNotFound for unknown email, got %v", err)
 	}
 }
 
@@ -463,7 +495,7 @@ func TestOpen_DirtyMigration(t *testing.T) {
 	}
 	raw.Close()
 
-	_, err = sqlite.Open(t.Context(), f.Name())
+	_, err = sqlite.Open(t.Context(), f.Name(), time.Minute)
 	if err == nil {
 		t.Fatal("expected error for dirty migration state, got nil")
 	}

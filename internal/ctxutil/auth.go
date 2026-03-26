@@ -48,6 +48,26 @@ func CSPNonceFromContext(ctx context.Context) string {
 	return v
 }
 
+// ClientInfo holds per-request client metadata for audit logging.
+type ClientInfo struct {
+	IP        string
+	UserAgent string
+}
+
+const clientInfoKey contextKey = "clientInfo"
+
+// WithClientInfo returns a derived context carrying the caller's IP and User-Agent.
+func WithClientInfo(ctx context.Context, ip, userAgent string) context.Context {
+	return context.WithValue(ctx, clientInfoKey, ClientInfo{IP: ip, UserAgent: userAgent})
+}
+
+// ClientInfoFromContext retrieves client metadata from the context.
+// Returns a zero-value ClientInfo (empty strings) when not present.
+func ClientInfoFromContext(ctx context.Context) ClientInfo {
+	v, _ := ctx.Value(clientInfoKey).(ClientInfo)
+	return v
+}
+
 const responseWriterKey contextKey = "responseWriter"
 
 // WithResponseWriter returns a derived context carrying the HTTP response writer.

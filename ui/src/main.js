@@ -1,4 +1,4 @@
-import Alpine from 'alpinejs'
+import Alpine from '@alpinejs/csp'
 import { router } from './router.js'
 
 window.Alpine = Alpine

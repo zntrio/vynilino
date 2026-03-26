@@ -182,7 +182,7 @@ func TestGraphQL_IPRateLimit_DifferentIP(t *testing.T) {
 }
 
 func TestUploadCoverArtHandler_InvalidRecordID(t *testing.T) {
-	fs, err := filestore.New(t.Context(), t.TempDir())
+	fs, err := filestore.New(t.Context(), t.TempDir(), time.Minute)
 	if err != nil {
 		t.Fatalf("new file store: %v", err)
 	}

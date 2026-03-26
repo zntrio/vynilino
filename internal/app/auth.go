@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 	"unicode"
@@ -153,30 +154,25 @@ func (s *UserService) bootstrapCreate(ctx context.Context, email, passwordHash s
 	})
 }
 
-// BootstrapProvisionUser creates a new OIDC-provisioned user via the same
-// atomic bootstrap path as Register. Email may be empty when the provider did
-// not supply a verified email address.
-func (s *UserService) BootstrapProvisionUser(ctx context.Context, email string) (*domain.User, error) {
-	return s.bootstrapCreate(ctx, email, "")
-}
-
 // Login authenticates with email/password and returns a token pair.
 func (s *UserService) Login(ctx context.Context, email, password string) (*TokenPair, error) {
+	client := ctxutil.ClientInfoFromContext(ctx)
+
 	user, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		// Constant-time response to prevent user enumeration.
 		constantTimeReject()
-		slog.InfoContext(ctx, "auth.login", "outcome", "invalid_credentials")
+		slog.InfoContext(ctx, "auth.login", "outcome", "invalid_credentials", "email", email, "ip", client.IP, "user_agent", client.UserAgent)
 		return nil, domain.ErrInvalidCredentials
 	}
 
 	if !user.Active {
-		slog.InfoContext(ctx, "auth.login", "outcome", "invalid_credentials")
+		slog.InfoContext(ctx, "auth.login", "outcome", "account_disabled", "user_id", user.ID, "email", email, "ip", client.IP, "user_agent", client.UserAgent)
 		return nil, domain.ErrAccountDisabled
 	}
 
 	if user.IsLocked(time.Now()) {
-		slog.InfoContext(ctx, "auth.login", "outcome", "account_locked")
+		slog.InfoContext(ctx, "auth.login", "outcome", "account_locked", "user_id", user.ID, "email", email, "ip", client.IP, "user_agent", client.UserAgent)
 		return nil, domain.ErrAccountLocked
 	}
 
@@ -184,20 +180,20 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*Token
 		lockUntil := s.computeLockout(user)
 		_ = s.users.RecordLoginFailure(ctx, user.ID, lockUntil)
 		if lockUntil != nil {
-			slog.InfoContext(ctx, "auth.login", "outcome", "account_locked")
+			slog.InfoContext(ctx, "auth.login", "outcome", "account_locked", "user_id", user.ID, "email", email, "ip", client.IP, "user_agent", client.UserAgent)
 			return nil, domain.ErrAccountLocked
 		}
-		slog.InfoContext(ctx, "auth.login", "outcome", "invalid_credentials")
+		slog.InfoContext(ctx, "auth.login", "outcome", "invalid_credentials", "user_id", user.ID, "email", email, "ip", client.IP, "user_agent", client.UserAgent)
 		return nil, domain.ErrInvalidCredentials
 	}
 
 	_ = s.users.ResetLoginFailure(ctx, user.ID)
 	pair, err := s.issueTokenPair(ctx, user.ID)
 	if err != nil {
-		slog.InfoContext(ctx, "auth.login", "outcome", "server_error")
+		slog.InfoContext(ctx, "auth.login", "outcome", "server_error", "ip", client.IP, "user_agent", client.UserAgent)
 		return nil, err
 	}
-	slog.InfoContext(ctx, "auth.login", "outcome", "success", "user_id", user.ID)
+	slog.InfoContext(ctx, "auth.login", "outcome", "success", "user_id", user.ID, "email", email, "ip", client.IP, "user_agent", client.UserAgent)
 	return pair, nil
 }
 
@@ -231,6 +227,14 @@ func (s *UserService) RefreshToken(ctx context.Context, rawRefreshToken string) 
 // Logout revokes all refresh tokens for the current user.
 func (s *UserService) Logout(ctx context.Context, userID string) error {
 	return s.tokens.RevokeAllForUser(ctx, userID)
+}
+
+// IsActiveUser reports whether a user with the given ID exists in the store and
+// has Active=true. It is used by AuthMiddleware to reject tokens for deleted or
+// deactivated accounts without a full DB round-trip on every unauthenticated request.
+func (s *UserService) IsActiveUser(ctx context.Context, id string) bool {
+	user, err := s.users.GetByID(ctx, id)
+	return err == nil && user.Active
 }
 
 // ValidateAccessToken parses and validates a PASETO v4 local token, returning the user ID.
@@ -328,8 +332,9 @@ func hexToLocalKey(hexStr string) (*pasetov4.LocalKey, error) {
 }
 
 func validatePassword(pw string) error {
+	var failures []string
 	if len(pw) < 12 {
-		return domain.ErrWeakPassword
+		failures = append(failures, "at least 12 characters")
 	}
 	var hasUpper, hasLower, hasDigit bool
 	for _, r := range pw {
@@ -342,8 +347,17 @@ func validatePassword(pw string) error {
 			hasDigit = true
 		}
 	}
-	if !hasUpper || !hasLower || !hasDigit {
-		return fmt.Errorf("%w: must contain uppercase, lowercase, and a digit", domain.ErrWeakPassword)
+	if !hasUpper {
+		failures = append(failures, "at least one uppercase letter")
+	}
+	if !hasLower {
+		failures = append(failures, "at least one lowercase letter")
+	}
+	if !hasDigit {
+		failures = append(failures, "at least one digit")
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("%w: password must contain %s", domain.ErrWeakPassword, strings.Join(failures, ", "))
 	}
 	return nil
 }

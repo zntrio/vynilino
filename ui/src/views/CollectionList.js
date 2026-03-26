@@ -1,4 +1,4 @@
-import Alpine from 'alpinejs'
+import Alpine from '@alpinejs/csp'
 import { gql, subscribe } from '../lib/gql.js'
 import { router } from '../router.js'
 import { renderShell } from '../components/AppShell.js'
@@ -158,6 +158,14 @@ export function CollectionList(container) {
     cancelDelete() {
       this.showDeleteModal = false
       this.deleteTarget = null
+    },
+
+    deleteAriaLabel() {
+      return 'Delete ' + (this.deleteTarget ? this.deleteTarget.title : 'record')
+    },
+
+    deleteTargetTitle() {
+      return this.deleteTarget ? this.deleteTarget.title : ''
     },
 
     async doDelete() {
@@ -435,12 +443,12 @@ function viewHTML() {
       @keydown.escape.window="cancelDelete()"
       role="dialog"
       aria-modal="true"
-      :aria-label="'Delete ' + (deleteTarget?.title ?? 'record')"
+      :aria-label="deleteAriaLabel()"
     >
       <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
         <h2 class="text-lg font-semibold mb-2">Delete record?</h2>
         <p class="text-sm text-zinc-400 mb-6">
-          "<span x-text="deleteTarget?.title"></span>" will be permanently deleted.
+          "<span x-text="deleteTargetTitle()"></span>" will be permanently deleted.
         </p>
         <div class="flex gap-3 justify-end">
           <button

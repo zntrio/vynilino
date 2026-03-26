@@ -5,13 +5,14 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"zntr.io/vynilino/internal/adapter/filestore"
 )
 
 func newTestStore(t *testing.T) *filestore.FileStore {
 	t.Helper()
-	fs, err := filestore.New(t.Context(), t.TempDir())
+	fs, err := filestore.New(t.Context(), t.TempDir(), time.Minute)
 	if err != nil {
 		t.Fatalf("new file store: %v", err)
 	}

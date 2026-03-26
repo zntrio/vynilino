@@ -33,20 +33,20 @@ type FileStore struct {
 }
 
 // New creates a FileStore rooted at dir, creating it if needed.
-// It starts a background goroutine that emits disk usage metrics every 60 s;
+// It starts a background goroutine that emits disk usage metrics every period;
 // the goroutine exits when ctx is cancelled.
-func New(ctx context.Context, dir string) (*FileStore, error) {
+func New(ctx context.Context, dir string, period time.Duration) (*FileStore, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("create media dir: %w", err)
 	}
 	s := &FileStore{root: dir}
-	go s.monitorDisk(ctx)
+	go s.monitorDisk(ctx, period)
 	return s, nil
 }
 
-// monitorDisk emits disk usage metrics every 60 s until ctx is cancelled.
-func (s *FileStore) monitorDisk(ctx context.Context) {
-	ticker := time.NewTicker(60 * time.Second)
+// monitorDisk emits disk usage metrics every period until ctx is cancelled.
+func (s *FileStore) monitorDisk(ctx context.Context, period time.Duration) {
+	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 	for {
 		select {

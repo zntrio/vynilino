@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds all runtime configuration for vynilino.
@@ -31,6 +32,9 @@ type Config struct {
 	OIDCClientSecret string
 	OIDCRedirectURL  string // e.g. http://localhost:8080/oidc/callback
 	OIDCAutoRedirect bool   // When true, GET /login redirects directly to OIDC provider
+
+	// Metrics
+	DiskMetricPeriod time.Duration // VYNILINO_DISK_METRIC_PERIOD; default 60s
 
 	// Discogs (optional — enables higher API rate limits when set)
 	DiscogsToken string
@@ -68,11 +72,12 @@ func Load() (*Config, error) {
 		AllowedOrigins: splitCSV(
 			getEnv("VYNILINO_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"),
 		),
-		Playground:    getBoolEnv("VYNILINO_PLAYGROUND", false),
-		Introspection: getBoolEnv("VYNILINO_INTROSPECTION", false),
-		BehindProxy:   getBoolEnv("VYNILINO_BEHIND_PROXY", false),
-		TLSCertFile:   getEnv("VYNILINO_TLS_CERT", ""),
-		TLSKeyFile:    getEnv("VYNILINO_TLS_KEY", ""),
+		Playground:       getBoolEnv("VYNILINO_PLAYGROUND", false),
+		Introspection:    getBoolEnv("VYNILINO_INTROSPECTION", false),
+		BehindProxy:      getBoolEnv("VYNILINO_BEHIND_PROXY", false),
+		TLSCertFile:      getEnv("VYNILINO_TLS_CERT", ""),
+		TLSKeyFile:       getEnv("VYNILINO_TLS_KEY", ""),
+		DiskMetricPeriod: getDurationEnv("VYNILINO_DISK_METRIC_PERIOD", 5*time.Minute),
 	}
 
 	// Override Playground / Introspection defaults in development
@@ -114,6 +119,18 @@ func getBoolEnv(key string, fallback bool) bool {
 		return fallback
 	}
 	return b
+}
+
+func getDurationEnv(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
 }
 
 func splitCSV(s string) []string {

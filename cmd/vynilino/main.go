@@ -11,9 +11,10 @@ import (
 
 func main() {
 	root := &cobra.Command{
-		Use:          "vynilino",
-		Short:        "Vynilino vinyl collection manager",
-		SilenceUsage: true,
+		Use:           "vynilino",
+		Short:         "Vynilino vinyl collection manager",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	root.AddCommand(vcmd.ServeCmd())
 	root.AddCommand(vcmd.UserCmd())
