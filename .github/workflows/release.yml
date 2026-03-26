@@ -42,6 +42,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -49,12 +50,12 @@ jobs:
           go-version-file: ./go.mod
           cache-dependency-path: ./go.sum
           check-latest: true
+          cache: false
 
       - name: Set up Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version-file: ui/package.json
-          cache: npm
           cache-dependency-path: ui/package-lock.json
 
       - name: Build UI assets
@@ -103,6 +104,8 @@ jobs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Log in to GHCR
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
@@ -146,9 +149,11 @@ jobs:
           cosign-release: "v2.6.1"
 
       - name: Sign image digest
+        env:
+          IMAGE_DIGEST: ${{ needs.docker-build.outputs.digest }}
         run: |
           cosign sign --yes \
-            ghcr.io/${{ github.repository }}@${{ needs.docker-build.outputs.digest }}
+            "ghcr.io/${{ github.repository }}@${IMAGE_DIGEST}"
 
   # ── SBOM generation + attestation ──────────────────────────────────────
   sbom:
@@ -169,8 +174,10 @@ jobs:
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
 
       - name: Generate SBOM from image
+        env:
+          IMAGE_DIGEST: ${{ needs.docker-build.outputs.digest }}
         run: |
-          syft ghcr.io/${{ github.repository }}@${{ needs.docker-build.outputs.digest }} \
+          syft "ghcr.io/${{ github.repository }}@${IMAGE_DIGEST}" \
             -o spdx-json=sbom.spdx.json
 
       - name: Rename SBOM with version
@@ -179,16 +186,21 @@ jobs:
           cp sbom.spdx.json vynilino-${VERSION}-sbom.spdx.json
 
       - name: Attest SBOM to image
+        env:
+          IMAGE_DIGEST: ${{ needs.docker-build.outputs.digest }}
         run: |
           cosign attest --yes \
             --predicate sbom.spdx.json \
             --type spdxjson \
-            ghcr.io/${{ github.repository }}@${{ needs.docker-build.outputs.digest }}
+            "ghcr.io/${{ github.repository }}@${IMAGE_DIGEST}"
 
       - name: Upload SBOM to GitHub release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
-        with:
-          files: vynilino-${{ github.ref_name }}-sbom.spdx.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            "vynilino-${GITHUB_REF_NAME}-sbom.spdx.json" \
+            --repo "$GITHUB_REPOSITORY" --clobber
 
   # ── Binary SLSA provenance ─────────────────────────────────────────────
   binary-provenance:
@@ -197,7 +209,7 @@ jobs:
       actions: read
       id-token: write
       contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
     with:
       base64-subjects-as-file: "${{ needs.goreleaser.outputs.subjects-as-file }}"
       provenance-name: "vynilino.intoto.jsonl"
@@ -210,7 +222,7 @@ jobs:
       actions: read
       id-token: write
       packages: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
     with:
       image: ghcr.io/${{ github.repository }}
       digest: ${{ needs.docker-build.outputs.digest }}
@@ -222,7 +234,9 @@ jobs:
   verification-with-slsa-verifier:
     needs: [goreleaser, binary-provenance]
     runs-on: ubuntu-latest
-    permissions: read-all
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Install the verifier
         uses: slsa-framework/slsa-verifier/actions/installer@ea584f4502babc6f60d9bc799dbbb13c1caa9ee6 # v2.7.1
@@ -250,7 +264,9 @@ jobs:
   verification-with-cosign:
     needs: [docker-build, image-provenance]
     runs-on: ubuntu-latest
-    permissions: read-all
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Log in to GHCR
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
