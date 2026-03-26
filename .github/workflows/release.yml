@@ -53,10 +53,10 @@ jobs:
           cache: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version-file: ui/package.json
-          cache-dependency-path: ui/package-lock.json
+          cache: false
 
       - name: Build UI assets
         run: |
