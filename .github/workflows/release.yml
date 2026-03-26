@@ -61,12 +61,6 @@ jobs:
         run: |
           cd ui && npm ci && npm run build
 
-      # GoReleaser requires a clean git tree. The UI build writes into
-      # web/dist/ which is .gitignored, so we stage these files to
-      # satisfy the dirty-tree check.
-      - name: Stage UI build output
-        run: git add --force web/dist/
-
       - uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
         with:
           cosign-release: "v2.6.1"
@@ -79,7 +73,9 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean --config .goreleaser.yaml
+          # --skip=validate: the UI build (npm run build) writes into
+          # web/dist/ which is .gitignored, making the tree appear dirty.
+          args: release --clean --skip=validate --config .goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
