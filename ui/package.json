@@ -14,7 +14,7 @@
     "tailwindcss": "^4.0.0"
   },
   "dependencies": {
-    "@alpinejs/csp": "^3.14.0",
+    "@alpinejs/csp": "^3.15.11",
     "htmx.org": "^2.0.0"
   },
   "engines": {
