@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@alpinejs/csp": "^3.14.0",
-    "htmx.org": "^2.0.0"
+    "htmx.org": "^2.0.10"
   },
   "engines": {
     "node": "25",
