@@ -17,7 +17,7 @@ require (
 	go.uber.org/fx v1.24.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/term v0.42.0
-	modernc.org/sqlite v1.47.0
+	modernc.org/sqlite v1.50.0
 	zntr.io/paseto v1.4.0
 )
 
@@ -43,7 +43,7 @@ require (
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
-	modernc.org/libc v1.70.0 // indirect
+	modernc.org/libc v1.72.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
